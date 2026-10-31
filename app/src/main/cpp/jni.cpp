@@ -1,0 +1,98 @@
+#include <jni.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <cstring>
+#include <string>
+#include <vector>
+
+extern "C" {
+#include "needle.h"
+}
+
+static void fail(JNIEnv* e, const std::string& m) {
+    jclass c = e->FindClass("java/lang/RuntimeException");
+    e->ThrowNew(c, m.c_str());
+}
+
+static std::string lastErr() {
+    const char* m = needle_last_error();
+    return m ? m : "unknown";
+}
+
+static std::string toStr(JNIEnv* e, jbyteArray a) {
+    jsize n = e->GetArrayLength(a);
+    std::string s(n, '\0');
+    if (n > 0) e->GetByteArrayRegion(a, 0, n, reinterpret_cast<jbyte*>(&s[0]));
+    return s;
+}
+
+static jbyteArray toJava(JNIEnv* e, const char* s) {
+    jsize n = (jsize)strlen(s);
+    jbyteArray a = e->NewByteArray(n);
+    e->SetByteArrayRegion(a, 0, n, reinterpret_cast<const jbyte*>(s));
+    return a;
+}
+
+extern "C" {
+
+// mmap the .cact and hand it to the engine. Mapping is never released:
+// the engine owns one process-global model per kind and has no unload.
+JNIEXPORT jint JNICALL
+Java_in_iambhvsh_theia_Engine_nativeLoad(JNIEnv* e, jobject, jstring path) {
+    const char* p = e->GetStringUTFChars(path, nullptr);
+    int fd = open(p, O_RDONLY);
+    e->ReleaseStringUTFChars(path, p);
+    if (fd < 0) { fail(e, "open failed"); return -1; }
+    struct stat st;
+    if (fstat(fd, &st) != 0) { close(fd); fail(e, "fstat failed"); return -1; }
+    void* m = mmap(nullptr, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    if (m == MAP_FAILED) { fail(e, "mmap failed"); return -1; }
+    int rc = needle_load(reinterpret_cast<const unsigned char*>(m),
+                         (unsigned long long)st.st_size);
+    if (rc < 0) { fail(e, "needle_load: " + lastErr()); return rc; }
+    return rc;
+}
+
+JNIEXPORT jint JNICALL
+Java_in_iambhvsh_theia_Engine_nativeModels(JNIEnv*, jobject) {
+    return needle_models();
+}
+
+JNIEXPORT jint JNICALL
+Java_in_iambhvsh_theia_Engine_nativeInit(JNIEnv* e, jobject, jbyteArray tools) {
+    std::string t = toStr(e, tools);
+    int rc = needle_init(nullptr, t.c_str(), nullptr);
+    if (rc < 0) fail(e, "needle_init: " + lastErr());
+    return rc;
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_in_iambhvsh_theia_Engine_nativeTranscribe(JNIEnv* e, jobject, jfloatArray pcm) {
+    jsize n = e->GetArrayLength(pcm);
+    jfloat* d = e->GetFloatArrayElements(pcm, nullptr);
+    std::vector<char> out(16384, 0);
+    static const char* kKeywords = "Theia\nopen\napp\ntimer\nalarm\nsearch\nfind\nreminder\nminutes\nminute\nhours\nhour\nfiles\ncall\nplay";
+    int rc = needle_transcribe(d, (int)n, "en", kKeywords, 0, out.data(), (int)out.size());
+    e->ReleaseFloatArrayElements(pcm, d, JNI_ABORT);
+    if (rc < 0) { fail(e, "needle_transcribe: " + lastErr()); return nullptr; }
+    return toJava(e, out.data());
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_in_iambhvsh_theia_Engine_nativeComplete(JNIEnv* e, jobject, jbyteArray text) {
+    std::string in = toStr(e, text);
+    std::vector<char> out(16384, 0);
+    int rc = needle_complete(in.c_str(), nullptr, 0, 256, out.data(), (int)out.size());
+    if (rc < 0) { fail(e, "needle_complete: " + lastErr()); return nullptr; }
+    return toJava(e, out.data());
+}
+
+JNIEXPORT void JNICALL
+Java_in_iambhvsh_theia_Engine_nativeReset(JNIEnv*, jobject) {
+    needle_reset();
+}
+
+}  // extern "C"

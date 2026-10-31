@@ -1,0 +1,57 @@
+# Built application files
+*.apk
+*.aar
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java/Kotlin class files
+*.class
+
+# Generated and build files
+bin/
+gen/
+out/
+build/
+**/build/
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+.gradle/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Keystores & signing keys
+*.jks
+*.keystore
+
+# Local configuration file (contains SDK path and machine-specific properties)
+local.properties
+
+# Setup & model download cache directories
+.fetch/
+.cache/
+
+# Downloaded models & engine binaries (fetched via scripts/setup.sh)
+app/src/main/assets/*.cact
+app/src/main/cpp/engine/*
+!app/src/main/cpp/engine/.gitkeep
+
+# Python virtual environments & bytecode
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS metadata
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Log files
+*.log
