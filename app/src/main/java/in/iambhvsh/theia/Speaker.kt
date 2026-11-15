@@ -19,7 +19,7 @@ data class VoiceItem(
     val systemVoiceName: String
 )
 
-// Theia's voice engine: High-fidelity Google Speech Services with instant latency and zero breathing artifacts.
+// Theia's voice engine: Google Speech Services
 object Speaker {
     private const val TAG = "TheiaSpeaker"
     private const val PREFS = "groq_prefs"

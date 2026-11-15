@@ -12,7 +12,8 @@ Theia is an open-source, completely offline voice assistant built from the groun
 - ⚡ **Real-Time Edge Inference:** Native C++ engine with SIMD optimizations and JNI bindings delivers rapid responses directly on CPU/NPU.
 - 🎙️ **On-Device Speech-to-Text (STT):** Powered by the **Whistle** acoustic model (`whistle.cact`) with adaptive Voice Activity Detection (VAD), pre-roll buffer, and automatic audio normalization.
 - 🧠 **Local LLM & Tool Calling:** Powered by **Needle 3** (`needle3.cact`), understanding user intent and executing actions with structured function calls.
-- 🗣️ **Neural Voice Synthesis (TTS):** Pre-bundled **Kitten TTS nano** running via `sherpa-onnx` and ONNX Runtime for natural, lightweight offline speech.
+- 🗣️ **Natural Voice Synthesis (TTS):** Google Speech Services studio-quality neural voice presets (Warm, Crisp, Expressive, British, Deep) with instant (~90ms) turnaround and zero breathing/sighing artifacts.
+- ⚡ **Real-Time Conversations & Context:** Groq ultra-low-latency LPU inference (`qwen/qwen3.8-27b`) with native SQLite conversational memory.
 - 📱 **Android System Integration:**
   - Registered as a native Android **Digital Assistant** (`VoiceInteractionService`).
   - Launches via Android's default assistant gesture (corner swipe / long-press power / home).
@@ -51,7 +52,7 @@ Theia is an open-source, completely offline voice assistant built from the groun
  │              ▼                                └─────────────────────────────────────┘  │
  │  ┌───────────────────────┐                                                             │
  │  │       Speaker.kt      │                                                             │
- │  │ Kitten TTS / ONNX JNI ├───────────────────► Audio Output (Speaker / Headphones)     │
+ │  │ Google Neural Presets ├───────────────────► Audio Output (Speaker / Headphones)     │
  │  └───────────────────────┘                                                             │
  └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -67,22 +68,22 @@ theia/
 │   │   ├── java/in/iambhvsh/theia/
 │   │   │   ├── Actions.kt        # Local phone actions (alarm, timer, apps, files)
 │   │   │   ├── Assistant.kt      # Android VoiceInteractionService entrypoint
+│   │   │   ├── Database.kt       # Native SQLite session & conversational memory
 │   │   │   ├── Engine.kt         # JNI bridge to Cactus Needle native engine
+│   │   │   ├── Groq.kt           # Real-time Groq cloud LLM client & connection manager
 │   │   │   ├── Parser.kt         # Tolerant function call & tool parser
 │   │   │   ├── Recognizer.kt     # Speech recognition service definition
 │   │   │   ├── Recorder.kt       # 16 kHz audio capture, VAD & normalization
-│   │   │   ├── Screen.kt         # Primary UI & assistant lifecycle
+│   │   │   ├── Screen.kt         # Primary UI, assistant lifecycle & voice selector
 │   │   │   ├── Session.kt        # VoiceInteractionSession & gesture handling
-│   │   │   └── Speaker.kt        # Sherpa-ONNX & Kitten TTS engine
+│   │   │   └── Speaker.kt        # Google Speech Services neural voice presets
 │   │   ├── cpp/
 │   │   │   ├── CMakeLists.txt    # NDK CMake build configuration
 │   │   │   ├── jni.cpp           # Native C++ bindings for libneedle
 │   │   │   └── engine/           # Engine headers & libneedle.a (fetched via setup)
-│   │   ├── assets/
-│   │   │   ├── kitten/           # Bundled Kitten TTS model & dictionaries
-│   │   │   ├── needle3.cact      # Needle 3 LLM weights (fetched via setup)
-│   │   │   └── whistle.cact      # Whistle STT model (fetched via setup)
-│   │   └── jniLibs/arm64-v8a/    # Bundled Sherpa-ONNX & ONNX Runtime binaries
+│   │   └── assets/
+│   │       ├── needle3.cact      # Needle 3 LLM weights (fetched via setup)
+│   │       └── whistle.cact      # Whistle STT model (fetched via setup)
 ├── scripts/
 │   ├── setup.sh                  # Universal cross-platform setup entrypoint
 │   ├── setup_macos.sh            # Automated setup for macOS
@@ -135,7 +136,7 @@ Run the setup script for your platform to download the Cactus Needle C++ engine 
 .\scripts\setup_windows.bat
 ```
 
-> *The Kitten TTS voice model and ONNX runtime libraries are already bundled with the repository.*
+> *Voice synthesis uses native Google Speech Services neural presets with zero setup.*
 
 ---
 
@@ -185,9 +186,8 @@ To trigger Theia via your phone's default assistant gesture:
 ## 📜 Acknowledgments & Open Source Libraries
 
 - [Cactus Needle](https://cactuscompute.com) &mdash; Native on-device execution engine and models (`whistle` STT and `needle3` LLM).
-- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) &mdash; Offline speech processing and JNI runtimes.
-- [Kitten TTS nano](https://github.com/k2-fsa/sherpa-onnx) &mdash; Ultra-compact, fast offline CPU neural TTS model.
-- [eSpeak NG](https://github.com/espeak-ng/espeak-ng) &mdash; Phoneme synthesis data.
+- [Groq](https://groq.com) &mdash; Fast cloud LPU inference (`qwen/qwen3.8-27b`).
+- [Google Speech Services](https://play.google.com/store/apps/details?id=com.google.android.tts) &mdash; Studio-quality neural voice synthesis.
 
 ---
 
