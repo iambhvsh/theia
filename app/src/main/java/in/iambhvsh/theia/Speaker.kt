@@ -130,7 +130,12 @@ object Speaker {
             override fun onDone(id: String?) {
                 if (id == utteranceId) latch.countDown()
             }
+            @Deprecated("Deprecated in Java")
+            @Suppress("DEPRECATION")
             override fun onError(id: String?) {
+                if (id == utteranceId) latch.countDown()
+            }
+            override fun onError(id: String?, errorCode: Int) {
                 if (id == utteranceId) latch.countDown()
             }
         })
