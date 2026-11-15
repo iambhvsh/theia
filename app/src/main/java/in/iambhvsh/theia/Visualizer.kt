@@ -16,12 +16,10 @@ import kotlin.math.sin
 /**
  * Authentic Google Gemini Live Waveform & Sparkle Visualizer.
  *
- * Reengineered directly from Google Gemini (`com.google.android.apps.bard`):
- * - Colors: Gemini Electric Blue (#3084FF) -> Iris Purple (#7C4DFF) -> Lilac (#CD9AEC)
- * - IDLE: 3-bar signature Gemini Live icon with organic breathing motion
- * - LISTENING: Dynamic Gemini Live waveform undulating to real-time voice RMS energy
- * - THINKING: Glowing rotating Gemini gradient sparkle
- * - SPEAKING: Rhythmic speech cadence waveform
+ * Reengineered directly from Google Gemini Live (`ls_gemini_live`):
+ * - 3-bar signature Gemini Live icon in dark theme (#C4C7C5 in IDLE)
+ * - Dynamic undulating gradient waveform (#3084FF Electric Blue -> #7C4DFF Iris Purple -> #CD9AEC Lilac) during LISTENING & SPEAKING
+ * - Rotating pulsing Gemini 4-point sparkle during THINKING
  */
 class Visualizer @JvmOverloads constructor(
     context: Context,
@@ -38,9 +36,8 @@ class Visualizer @JvmOverloads constructor(
 
     private val wavePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val sparklePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    // Gemini Brand Gradient: Blue -> Purple -> Lilac
+    // Gemini Brand Gradient: Blue -> Iris -> Lilac
     private val geminiColors = intArrayOf(
         0xFF3084FF.toInt(), // Electric Blue
         0xFF078EFB.toInt(), // Cyan
@@ -98,7 +95,7 @@ class Visualizer @JvmOverloads constructor(
     }
 
     /**
-     * Draws the signature Google Gemini Live 3-to-4 bar dynamic audio waveform.
+     * Draws the signature Google Gemini Live 3-bar dynamic audio waveform.
      */
     private fun drawGeminiWaveform(
         canvas: Canvas,
@@ -107,26 +104,30 @@ class Visualizer @JvmOverloads constructor(
         density: Float,
         elapsedSec: Float
     ) {
-        // Base bar heights: center bar is tallest, outer bars are stepped
-        // Matching Gemini Live logo: left=16dp, center-left=24dp, center-right=24dp, right=14dp
-        val barCount = 4
-        val barWidth = 4f * density
-        val spacing = 7.5f * density
+        // 3 bars matching Google Gemini Live icon:
+        // Left: 14dp, Center: 24dp, Right: 10dp
+        val barCount = 3
+        val barWidth = 3.2f * density
+        val spacing = 7.0f * density
         val baseHeights = floatArrayOf(
-            12f * density,
+            15f * density,
             24f * density,
-            20f * density,
-            10f * density
+            11f * density
         )
 
-        // Linear gradient applied vertically
-        wavePaint.shader = LinearGradient(
-            cx - 20f * density, cy - 18f * density,
-            cx + 20f * density, cy + 18f * density,
-            geminiColors,
-            geminiPositions,
-            Shader.TileMode.CLAMP
-        )
+        if (mode == Mode.IDLE) {
+            wavePaint.shader = null
+            wavePaint.color = 0xFFC4C7C5.toInt() // Exact Gemini theme icon grey
+        } else {
+            // Linear gradient applied vertically
+            wavePaint.shader = LinearGradient(
+                cx - 15f * density, cy - 16f * density,
+                cx + 15f * density, cy + 16f * density,
+                geminiColors,
+                geminiPositions,
+                Shader.TileMode.CLAMP
+            )
+        }
 
         val totalWidth = (barCount - 1) * spacing
         val startX = cx - (totalWidth / 2f)
@@ -138,20 +139,20 @@ class Visualizer @JvmOverloads constructor(
             val currentHeight: Float
             when (mode) {
                 Mode.IDLE -> {
-                    // Gentle, breathing floating motion
-                    val breathe = 1.0f + 0.12f * sin(elapsedSec * 2.2f + i * 0.7f)
+                    // Gentle breathing motion
+                    val breathe = 1.0f + 0.08f * sin(elapsedSec * 2.0f + i * 0.8f)
                     currentHeight = baseH * breathe
                 }
                 Mode.LISTENING -> {
                     // Dynamic live audio response: energetic undulation driven by RMS
-                    val wave = abs(sin(elapsedSec * 6.5f + i * 1.1f))
+                    val wave = abs(sin(elapsedSec * 6.5f + i * 1.2f))
                     val audioBoost = dampedRms * 28f * density
                     currentHeight = (baseH * 0.7f + audioBoost * (0.6f + 0.4f * wave))
                         .coerceAtLeast(barWidth)
                 }
                 Mode.SPEAKING -> {
                     // Speech cadence rhythm
-                    val wave = abs(sin(elapsedSec * 7.5f + i * 0.9f))
+                    val wave = abs(sin(elapsedSec * 7.5f + i * 1.0f))
                     currentHeight = (baseH * (0.8f + 0.6f * wave))
                         .coerceAtLeast(barWidth)
                 }
