@@ -85,6 +85,7 @@ class Screen : Activity() {
     private var isExpanded = false
     private val currentSessionId = UUID.randomUUID().toString()
 
+    @Suppress("DEPRECATION")
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
 
@@ -178,7 +179,7 @@ class Screen : Activity() {
             elevation = 6f * density
 
             val icon = ImageView(this@Screen).apply {
-                setImageResource(R.drawable.ic_collapse)
+                setImageResource(resDrawable("ic_collapse"))
                 setColorFilter(0xFFE3E3E3.toInt())
                 val ilp = LinearLayout.LayoutParams((16 * density).toInt(), (16 * density).toInt()).apply {
                     marginEnd = (6 * density).toInt()
@@ -290,6 +291,8 @@ class Screen : Activity() {
         Speaker.stop()
         super.finish()
     }
+
+    private fun resDrawable(name: String): Int = resources.getIdentifier(name, "drawable", packageName)
 
     private fun createRipple(bgColor: Int = Color.TRANSPARENT, density: Float): RippleDrawable {
         val mask = GradientDrawable().apply {
@@ -412,13 +415,13 @@ class Screen : Activity() {
             }
         }
 
-        val thumbUpBtn = makeActionBtn(R.drawable.ic_thumb_up) {
+        val thumbUpBtn = makeActionBtn(resDrawable("ic_thumb_up")) {
             Toast.makeText(this, "Feedback received", Toast.LENGTH_SHORT).show()
         }
-        val thumbDownBtn = makeActionBtn(R.drawable.ic_thumb_down) {
+        val thumbDownBtn = makeActionBtn(resDrawable("ic_thumb_down")) {
             Toast.makeText(this, "Feedback received", Toast.LENGTH_SHORT).show()
         }
-        val shareBtn = makeActionBtn(R.drawable.ic_share) {
+        val shareBtn = makeActionBtn(resDrawable("ic_share")) {
             val content = responseTextView.text.toString()
             if (content.isNotBlank()) {
                 val sendIntent = Intent().apply {
@@ -429,14 +432,14 @@ class Screen : Activity() {
                 startActivity(Intent.createChooser(sendIntent, "Share with"))
             }
         }
-        val copyBtn = makeActionBtn(R.drawable.ic_content_copy) {
+        val copyBtn = makeActionBtn(resDrawable("ic_content_copy")) {
             val content = responseTextView.text.toString()
             val cb = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             cb?.setPrimaryClip(ClipData.newPlainText("Theia Response", content))
             Toast.makeText(this, "Copied to clipboard", Toast.LENGTH_SHORT).show()
         }
 
-        val moreVertBtn = makeActionBtn(R.drawable.ic_more_vert) {
+        val moreVertBtn = makeActionBtn(resDrawable("ic_more_vert")) {
             val popup = PopupMenu(this@Screen, toolbar, Gravity.START)
             popup.menu.add(0, 1, 0, "Settings")
             popup.menu.add(0, 2, 1, "Clear conversation")
@@ -475,7 +478,7 @@ class Screen : Activity() {
         }
         toolbar.addView(spacer)
 
-        volumeBtn = makeActionBtn(R.drawable.ic_volume_up) {
+        volumeBtn = makeActionBtn(resDrawable("ic_volume_up")) {
             if (Speaker.isSpeaking) {
                 Speaker.stop()
             } else {
@@ -528,7 +531,7 @@ class Screen : Activity() {
             elevation = 4f * density
 
             val icon = ImageView(this@Screen).apply {
-                setImageResource(R.drawable.ic_screen_share)
+                setImageResource(resDrawable("ic_screen_share"))
                 setColorFilter(0xFFE3E3E3.toInt())
                 val ilp = LinearLayout.LayoutParams((18 * density).toInt(), (18 * density).toInt()).apply {
                     marginEnd = (8 * density).toInt()
@@ -552,7 +555,7 @@ class Screen : Activity() {
         }
 
         val photosBtn = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_photos)
+            setImageResource(resDrawable("ic_photos"))
             setColorFilter(0xFFC4C7C5.toInt())
             background = createRipple(0xFF282A2C.toInt(), density)
             val plp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt()).apply {
@@ -567,7 +570,7 @@ class Screen : Activity() {
         }
 
         val cameraBtn = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_camera)
+            setImageResource(resDrawable("ic_camera"))
             setColorFilter(0xFFC4C7C5.toInt())
             background = createRipple(0xFF282A2C.toInt(), density)
             val clp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt())
