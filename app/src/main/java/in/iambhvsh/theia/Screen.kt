@@ -43,24 +43,14 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 /**
- * Theia: Authentic Google Gemini Mobile Overlay Architecture.
+ * Theia: Minimalist Google Gemini Overlay Architecture.
  *
- * Reverse-engineered directly from Google Gemini (`com.google.android.apps.bard`):
- * - Dark translucent overlay with dimmed wallpaper
- * - Floating top-right "↳ Minimise" pill button
- * - Floating Greeting / Response card (#131314 charcoal card, corner radius 28dp):
- *     - Centered top drag handle (32dp x 3.5dp, #444746)
- *     - Natural assistant response text ("Hey Bhavesh, how can I help you today?")
- *     - Action toolbar: Thumbs up, Thumbs down, Share, Copy, More vert, and Read aloud
- * - Floating Action / Context row:
- *     - "Share screen with Live" pill
- *     - Circular Photos pinwheel & Camera buttons
- * - Floating Gemini Input Card:
- *     - Collapsed: 64dp stadium pill with Add (+), "Ask Gemini" prompt, Mic & Gemini Live wave
- *     - Expanded: Expands to 108dp card with text input on top and actions on bottom
- *     - Active listening state: circular grey mic plate with dark icon
- *     - Typing state: circular #3084FF send button
- * - Expandable Settings page
+ * Designed per user specifications:
+ * - By default: ONLY the clean floating bottom pill is shown (no response container by default).
+ * - No plus icon and no icon beside mic.
+ * - Response container and Minimise button appear ONLY when an actual AI response is generated.
+ * - If no speech is heard ("I didn't hear anything"), it silently resets without showing any card.
+ * - Instant speech cancellation as soon as the user closes or exits the sheet.
  */
 class Screen : Activity() {
     private val exec = Executors.newSingleThreadExecutor()
@@ -71,25 +61,24 @@ class Screen : Activity() {
     private lateinit var overlayContainer: LinearLayout
     private lateinit var settingsPage: ScrollView
 
-    // Response / Greeting Card
+    // Top Minimise Bar & Response / Greeting Card (hidden by default)
+    private lateinit var topBar: LinearLayout
     private lateinit var responseCard: LinearLayout
     private lateinit var responseTextScroll: ScrollView
     private lateinit var responseTextView: TextView
     private lateinit var statusTextView: TextView
     private lateinit var volumeBtn: ImageButton
 
-    // Floating Context Row
+    // Floating Context Row (optional)
     private lateinit var contextRow: LinearLayout
 
-    // Floating Input Card Elements
+    // Floating Input Pill Elements (Clean: Text + Mic / Send only)
     private lateinit var inputCardContainer: FrameLayout
     private lateinit var collapsedInputRow: LinearLayout
     private lateinit var expandedInputCard: LinearLayout
     private lateinit var promptInput: EditText
     private lateinit var collapsedMicBtn: ImageButton
-    private lateinit var collapsedLiveVisualizer: Visualizer
     private lateinit var expandedMicBtn: ImageButton
-    private lateinit var expandedLiveVisualizer: Visualizer
     private lateinit var expandedSendBtn: ImageButton
 
     @Volatile private var busy = false
@@ -114,7 +103,7 @@ class Screen : Activity() {
             )
         }
 
-        // 1. Semi-Transparent Scrim (tapping outside dismisses the overlay)
+        // 1. Semi-Transparent Scrim (tapping outside stops speech and dismisses overlay)
         backdropView = View(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -122,6 +111,7 @@ class Screen : Activity() {
             )
             setBackgroundColor(0x77000000) // 45% soft dark dim
             setOnClickListener {
+                Speaker.stop()
                 if (isExpanded) {
                     collapseInput()
                 } else {
@@ -161,8 +151,8 @@ class Screen : Activity() {
             insets
         }
 
-        // --- ROW A: Floating Top-Right "↳ Minimise" Button ---
-        val topBar = LinearLayout(this).apply {
+        // --- ROW A: Floating Top-Right "↳ Minimise" Button (Hidden by default) ---
+        topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
             val lp = LinearLayout.LayoutParams(
@@ -173,6 +163,7 @@ class Screen : Activity() {
                 bottomMargin = (10 * density).toInt()
             }
             layoutParams = lp
+            visibility = View.GONE // Hidden by default
         }
 
         val minimiseBtn = LinearLayout(this).apply {
@@ -204,22 +195,27 @@ class Screen : Activity() {
 
             addView(icon)
             addView(text)
-            setOnClickListener { finish() }
+            setOnClickListener {
+                Speaker.stop()
+                finish()
+            }
         }
         topBar.addView(minimiseBtn)
         overlayContainer.addView(topBar)
 
-        // --- ROW B: Floating Greeting / Response Card ---
-        responseCard = buildResponseCard(density)
+        // --- ROW B: Floating Greeting / Response Card (Hidden by default) ---
+        responseCard = buildResponseCard(density).apply {
+            visibility = View.GONE // Hidden by default
+        }
         overlayContainer.addView(responseCard)
 
-        // --- ROW C: Floating Suggestion / Context Row ---
-        // (Hidden when responseCard is visible, matching Google Gemini screenshots 1 & 3)
-        contextRow = buildContextRow(density)
-        contextRow.visibility = View.GONE
+        // --- ROW C: Floating Suggestion / Context Row (Hidden by default) ---
+        contextRow = buildContextRow(density).apply {
+            visibility = View.GONE // Hidden by default
+        }
         overlayContainer.addView(contextRow)
 
-        // --- ROW D: Floating Gemini Input Card ---
+        // --- ROW D: Floating Gemini Bottom Pill (Visible by default) ---
         inputCardContainer = buildInputCardContainer(density)
         overlayContainer.addView(inputCardContainer)
 
@@ -231,18 +227,14 @@ class Screen : Activity() {
 
         setContentView(rootLayout)
 
-        // Wire speaker state into visualizers and UI
+        // Wire speaker state into UI
         Speaker.onSpeakingStateChanged = { speaking ->
             ui {
                 if (speaking) {
-                    collapsedLiveVisualizer.mode = Visualizer.Mode.SPEAKING
-                    expandedLiveVisualizer.mode = Visualizer.Mode.SPEAKING
                     statusTextView.text = "Theia is speaking…"
                     statusTextView.visibility = View.VISIBLE
                     volumeBtn.setColorFilter(0xFF3084FF.toInt())
                 } else if (!busy) {
-                    collapsedLiveVisualizer.mode = Visualizer.Mode.IDLE
-                    expandedLiveVisualizer.mode = Visualizer.Mode.IDLE
                     statusTextView.visibility = View.GONE
                     volumeBtn.setColorFilter(0xFFC4C7C5.toInt())
                 }
@@ -277,6 +269,26 @@ class Screen : Activity() {
         i.getStringExtra("speak")?.let {
             if (it.isNotBlank()) exec.execute { Speaker.speak(applicationContext, it) }
         }
+    }
+
+    override fun onPause() {
+        Speaker.stop()
+        super.onPause()
+    }
+
+    override fun onStop() {
+        Speaker.stop()
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        Speaker.stop()
+        super.onDestroy()
+    }
+
+    override fun finish() {
+        Speaker.stop()
+        super.finish()
     }
 
     private fun createRipple(bgColor: Int = Color.TRANSPARENT, density: Float): RippleDrawable {
@@ -317,7 +329,7 @@ class Screen : Activity() {
             setPadding((18 * density).toInt(), (10 * density).toInt(), (18 * density).toInt(), (12 * density).toInt())
         }
 
-        // Drag handle (32dp x 3.5dp, #444746) - tap to dismiss card and reveal context row
+        // Drag handle (32dp x 3.5dp, #444746) - tap to dismiss card
         val handleBar = View(this).apply {
             val hlp = LinearLayout.LayoutParams((32 * density).toInt(), (3.5f * density).toInt()).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -330,8 +342,8 @@ class Screen : Activity() {
                 cornerRadius = 2f * density
             }
             setOnClickListener {
+                topBar.visibility = View.GONE
                 responseCard.visibility = View.GONE
-                contextRow.visibility = View.VISIBLE
             }
         }
         card.addView(handleBar)
@@ -354,7 +366,7 @@ class Screen : Activity() {
         }
 
         responseTextView = TextView(this).apply {
-            text = "Hey Bhavesh, how can I help you today?"
+            text = ""
             textSize = 18f
             setTextColor(0xFFE3E3E3.toInt())
             setLineSpacing(0f, 1.25f)
@@ -400,7 +412,6 @@ class Screen : Activity() {
             }
         }
 
-        // Left toolbar buttons
         val thumbUpBtn = makeActionBtn(R.drawable.ic_thumb_up) {
             Toast.makeText(this, "Feedback received", Toast.LENGTH_SHORT).show()
         }
@@ -439,7 +450,9 @@ class Screen : Activity() {
                         exec.execute {
                             Database.get(applicationContext).history().clear()
                             ui {
-                                responseTextView.text = "Hey Bhavesh, how can I help you today?"
+                                responseCard.visibility = View.GONE
+                                topBar.visibility = View.GONE
+                                responseTextView.text = ""
                                 showStatus("Conversation cleared")
                             }
                         }
@@ -457,13 +470,11 @@ class Screen : Activity() {
         toolbar.addView(copyBtn)
         toolbar.addView(moreVertBtn)
 
-        // Spacer to push volume button to the right
         val spacer = View(this).apply {
             layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
         }
         toolbar.addView(spacer)
 
-        // Right toolbar button: Volume / Read Aloud
         volumeBtn = makeActionBtn(R.drawable.ic_volume_up) {
             if (Speaker.isSpeaking) {
                 Speaker.stop()
@@ -481,10 +492,7 @@ class Screen : Activity() {
     }
 
     /**
-     * Builds the floating context row above the input plate:
-     * - "Share screen with Live" pill
-     * - Photos circular button (#282A2C)
-     * - Camera circular button (#282A2C)
+     * Optional floating context row.
      */
     private fun buildContextRow(density: Float): LinearLayout {
         val row = LinearLayout(this).apply {
@@ -501,7 +509,6 @@ class Screen : Activity() {
             layoutParams = lp
         }
 
-        // Pill: [ ⇪ ] Share screen with Live
         val shareScreenPill = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -539,12 +546,11 @@ class Screen : Activity() {
             addView(icon)
             addView(text)
             setOnClickListener {
-                Toast.makeText(this@Screen, "Sharing screen with Theia Live…", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@Screen, "Sharing screen with Theia…", Toast.LENGTH_SHORT).show()
                 listen()
             }
         }
 
-        // Circular Photos Button
         val photosBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_photos)
             setColorFilter(0xFFC4C7C5.toInt())
@@ -555,18 +561,11 @@ class Screen : Activity() {
             layoutParams = plp
             elevation = 4f * density
             setOnClickListener {
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    type = "image/*"
-                }
-                try {
-                    startActivity(intent)
-                } catch (_: Exception) {
-                    processQuery("search photos")
-                }
+                val intent = Intent(Intent.ACTION_VIEW).apply { type = "image/*" }
+                try { startActivity(intent) } catch (_: Exception) { processQuery("search photos") }
             }
         }
 
-        // Circular Camera Button
         val cameraBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_camera)
             setColorFilter(0xFFC4C7C5.toInt())
@@ -576,11 +575,7 @@ class Screen : Activity() {
             elevation = 4f * density
             setOnClickListener {
                 val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-                try {
-                    startActivity(intent)
-                } catch (_: Exception) {
-                    processQuery("open camera")
-                }
+                try { startActivity(intent) } catch (_: Exception) { processQuery("open camera") }
             }
         }
 
@@ -591,9 +586,10 @@ class Screen : Activity() {
     }
 
     /**
-     * Builds the Google Gemini input container which seamlessly toggles between:
-     * - Collapsed Mode (64dp stadium pill with Add, Ask Gemini, Mic, Gemini Live bars)
-     * - Expanded Mode (108dp card with prompt text on top, and bottom actions row)
+     * Builds the clean Google Gemini bottom pill:
+     * - NO plus icon
+     * - NO icon beside mic
+     * - Only prompt text + Mic (or Send when typing)
      */
     private fun buildInputCardContainer(density: Float): FrameLayout {
         val container = FrameLayout(this).apply {
@@ -613,7 +609,7 @@ class Screen : Activity() {
             elevation = 8f * density
         }
 
-        // --- 1. COLLAPSED INPUT ROW ---
+        // --- 1. COLLAPSED INPUT ROW: [ "Ask Gemini" ] ... [ Mic ] ---
         collapsedInputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -622,23 +618,8 @@ class Screen : Activity() {
                 (64 * density).toInt()
             )
             layoutParams = clp
-            setPadding((16 * density).toInt(), 0, (12 * density).toInt(), 0)
+            setPadding((24 * density).toInt(), 0, (14 * density).toInt(), 0)
         }
-
-        // Left Add (+) Button
-        val addBtn = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_add)
-            setColorFilter(0xFFC4C7C5.toInt())
-            background = createRipple(Color.TRANSPARENT, density)
-            val alp = LinearLayout.LayoutParams((36 * density).toInt(), (36 * density).toInt()).apply {
-                marginEnd = (12 * density).toInt()
-            }
-            layoutParams = alp
-            setOnClickListener {
-                expandInput()
-            }
-        }
-        collapsedInputRow.addView(addBtn)
 
         // Center "Ask Gemini" Text / Tap Area
         val hintText = TextView(this).apply {
@@ -656,14 +637,12 @@ class Screen : Activity() {
         }
         collapsedInputRow.addView(hintText)
 
-        // Right Mic Button
+        // Right Mic Button (Alone, no icon beside it)
         collapsedMicBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_mic)
             setColorFilter(0xFFC4C7C5.toInt())
             background = createRipple(Color.TRANSPARENT, density)
-            val mlp = LinearLayout.LayoutParams((40 * density).toInt(), (40 * density).toInt()).apply {
-                marginEnd = (6 * density).toInt()
-            }
+            val mlp = LinearLayout.LayoutParams((44 * density).toInt(), (44 * density).toInt())
             layoutParams = mlp
             setOnClickListener {
                 if (Speaker.isSpeaking) {
@@ -672,22 +651,12 @@ class Screen : Activity() {
                     listen()
                 }
             }
-        }
-        collapsedInputRow.addView(collapsedMicBtn)
-
-        // Right Gemini Live Waveform Visualizer
-        collapsedLiveVisualizer = Visualizer(this).apply {
-            val vlp = LinearLayout.LayoutParams((36 * density).toInt(), (36 * density).toInt())
-            layoutParams = vlp
-            setOnClickListener {
-                if (Speaker.isSpeaking) {
-                    Speaker.stop()
-                } else if (!busy) {
-                    listen()
-                }
+            setOnLongClickListener {
+                showSettingsPage()
+                true
             }
         }
-        collapsedInputRow.addView(collapsedLiveVisualizer)
+        collapsedInputRow.addView(collapsedMicBtn)
         container.addView(collapsedInputRow)
 
         // --- 2. EXPANDED INPUT CARD ---
@@ -698,7 +667,7 @@ class Screen : Activity() {
                 (108 * density).toInt()
             )
             layoutParams = elp
-            setPadding((16 * density).toInt(), (12 * density).toInt(), (14 * density).toInt(), (10 * density).toInt())
+            setPadding((20 * density).toInt(), (14 * density).toInt(), (14 * density).toInt(), (10 * density).toInt())
             visibility = View.GONE
         }
 
@@ -730,14 +699,13 @@ class Screen : Activity() {
                     val hasText = !s.isNullOrBlank()
                     expandedSendBtn.visibility = if (hasText) View.VISIBLE else View.GONE
                     expandedMicBtn.visibility = if (hasText) View.GONE else View.VISIBLE
-                    expandedLiveVisualizer.visibility = if (hasText) View.GONE else View.VISIBLE
                 }
                 override fun afterTextChanged(s: Editable?) {}
             })
         }
         expandedInputCard.addView(promptInput)
 
-        // Bottom Row: [ + ] ... [ Mic, Live ] or [ Send ]
+        // Bottom Row: Spacer ... [ Mic ] or [ Send ] (No plus, no icon beside mic)
         val expandedBottomRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -748,18 +716,6 @@ class Screen : Activity() {
             layoutParams = blp
         }
 
-        val expandedAddBtn = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_add)
-            setColorFilter(0xFFC4C7C5.toInt())
-            background = createRipple(Color.TRANSPARENT, density)
-            val alp = LinearLayout.LayoutParams((36 * density).toInt(), (36 * density).toInt())
-            layoutParams = alp
-            setOnClickListener {
-                Toast.makeText(this@Screen, "Add attachment / tools", Toast.LENGTH_SHORT).show()
-            }
-        }
-        expandedBottomRow.addView(expandedAddBtn)
-
         val bottomSpacer = View(this).apply {
             layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
         }
@@ -769,9 +725,7 @@ class Screen : Activity() {
             setImageResource(R.drawable.ic_mic)
             setColorFilter(0xFFC4C7C5.toInt())
             background = createRipple(Color.TRANSPARENT, density)
-            val mlp = LinearLayout.LayoutParams((36 * density).toInt(), (36 * density).toInt()).apply {
-                marginEnd = (6 * density).toInt()
-            }
+            val mlp = LinearLayout.LayoutParams((40 * density).toInt(), (40 * density).toInt())
             layoutParams = mlp
             setOnClickListener {
                 if (Speaker.isSpeaking) {
@@ -783,19 +737,6 @@ class Screen : Activity() {
         }
         expandedBottomRow.addView(expandedMicBtn)
 
-        expandedLiveVisualizer = Visualizer(this).apply {
-            val vlp = LinearLayout.LayoutParams((36 * density).toInt(), (36 * density).toInt())
-            layoutParams = vlp
-            setOnClickListener {
-                if (Speaker.isSpeaking) {
-                    Speaker.stop()
-                } else if (!busy) {
-                    listen()
-                }
-            }
-        }
-        expandedBottomRow.addView(expandedLiveVisualizer)
-
         expandedSendBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_send)
             setColorFilter(Color.WHITE)
@@ -804,7 +745,7 @@ class Screen : Activity() {
                 shape = GradientDrawable.OVAL
                 setColor(0xFF3084FF.toInt()) // Gemini Electric Blue
             }
-            val slp = LinearLayout.LayoutParams((36 * density).toInt(), (36 * density).toInt())
+            val slp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt())
             layoutParams = slp
             setOnClickListener { submitPrompt() }
         }
@@ -885,6 +826,7 @@ class Screen : Activity() {
     }
 
     private fun showSettingsPage() {
+        Speaker.stop()
         backdropView.visibility = View.GONE
         overlayContainer.visibility = View.GONE
         settingsPage.visibility = View.VISIBLE
@@ -898,6 +840,7 @@ class Screen : Activity() {
 
     @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
     override fun onBackPressed() {
+        Speaker.stop()
         if (settingsPage.visibility == View.VISIBLE) {
             showOverlay()
         } else if (isExpanded) {
@@ -1104,7 +1047,9 @@ class Screen : Activity() {
                 exec.execute {
                     Database.get(applicationContext).history().clear()
                     ui {
-                        responseTextView.text = "Hey Bhavesh, how can I help you today?"
+                        responseCard.visibility = View.GONE
+                        topBar.visibility = View.GONE
+                        responseTextView.text = ""
                         showStatus("Conversation memory cleared")
                     }
                 }
@@ -1173,16 +1118,19 @@ class Screen : Activity() {
     }
 
     private fun say(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
         ui {
+            topBar.visibility = View.VISIBLE
             responseCard.visibility = View.VISIBLE
             contextRow.visibility = View.GONE
-            responseTextView.text = text
+            responseTextView.text = trimmed
             showStatus("")
             responseTextScroll.post {
                 responseTextScroll.fullScroll(View.FOCUS_DOWN)
             }
         }
-        Speaker.speak(applicationContext, text)
+        Speaker.speak(applicationContext, trimmed)
     }
 
     private fun listen() {
@@ -1196,10 +1144,6 @@ class Screen : Activity() {
 
         ui {
             setMicActive(true)
-            statusTextView.text = "Listening…"
-            statusTextView.visibility = View.VISIBLE
-            collapsedLiveVisualizer.mode = Visualizer.Mode.LISTENING
-            expandedLiveVisualizer.mode = Visualizer.Mode.LISTENING
         }
 
         exec.execute {
@@ -1208,31 +1152,21 @@ class Screen : Activity() {
 
                 val pcm = Recorder.capture(
                     maxSec = 15,
-                    onRmsUpdate = { rms ->
-                        ui {
-                            collapsedLiveVisualizer.setRms(rms)
-                            expandedLiveVisualizer.setRms(rms)
-                        }
-                    },
+                    onRmsUpdate = { _ -> },
                     onSpeechDetected = {
                         ui {
-                            collapsedLiveVisualizer.mode = Visualizer.Mode.LISTENING
-                            expandedLiveVisualizer.mode = Visualizer.Mode.LISTENING
-                            statusTextView.text = "Listening…"
+                            setMicActive(true)
                         }
                     }
                 )
 
+                // If no audio was heard, silently reset without showing any card
                 if (pcm.isEmpty()) {
-                    say("I didn't hear anything.")
                     return@execute
                 }
 
                 ui {
                     setMicActive(false)
-                    collapsedLiveVisualizer.mode = Visualizer.Mode.THINKING
-                    expandedLiveVisualizer.mode = Visualizer.Mode.THINKING
-                    statusTextView.text = "Thinking…"
                 }
 
                 val rawTranscribe = Engine.transcribe(pcm)
@@ -1240,13 +1174,9 @@ class Screen : Activity() {
                 val text = org.json.JSONObject(rawTranscribe).optString("text").trim()
                 android.util.Log.d("Theia", "Extracted transcribed text: '$text'")
 
+                // If transcription is empty, silently reset
                 if (text.isEmpty()) {
-                    say("I didn't catch that.")
                     return@execute
-                }
-
-                ui {
-                    responseTextView.text = text
                 }
 
                 val prompt = cleanTranscript(text).ifEmpty { text }
@@ -1255,17 +1185,11 @@ class Screen : Activity() {
             } catch (e: Throwable) {
                 ui {
                     showStatus("Error: ${e.message}")
-                    collapsedLiveVisualizer.mode = Visualizer.Mode.IDLE
-                    expandedLiveVisualizer.mode = Visualizer.Mode.IDLE
                 }
             } finally {
                 busy = false
                 ui {
                     setMicActive(false)
-                    if (!Speaker.isSpeaking) {
-                        collapsedLiveVisualizer.mode = Visualizer.Mode.IDLE
-                        expandedLiveVisualizer.mode = Visualizer.Mode.IDLE
-                    }
                 }
             }
         }
@@ -1273,11 +1197,10 @@ class Screen : Activity() {
 
     private fun processQuery(prompt: String) {
         ui {
+            topBar.visibility = View.VISIBLE
             responseCard.visibility = View.VISIBLE
             contextRow.visibility = View.GONE
             responseTextView.text = prompt
-            collapsedLiveVisualizer.mode = Visualizer.Mode.THINKING
-            expandedLiveVisualizer.mode = Visualizer.Mode.THINKING
             showStatus("Thinking…")
         }
 
@@ -1402,10 +1325,7 @@ class Screen : Activity() {
             } finally {
                 busy = false
                 ui {
-                    if (!Speaker.isSpeaking) {
-                        collapsedLiveVisualizer.mode = Visualizer.Mode.IDLE
-                        expandedLiveVisualizer.mode = Visualizer.Mode.IDLE
-                    }
+                    setMicActive(false)
                 }
             }
         }
@@ -1434,10 +1354,5 @@ class Screen : Activity() {
         super.onRequestPermissionsResult(code, perms, res)
         if (res.isNotEmpty() && res[0] == PackageManager.PERMISSION_GRANTED) listen()
         else showStatus("Microphone permission required")
-    }
-
-    override fun onDestroy() {
-        Speaker.stop()
-        super.onDestroy()
     }
 }
