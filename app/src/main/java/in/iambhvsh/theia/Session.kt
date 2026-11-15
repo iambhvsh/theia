@@ -23,13 +23,13 @@ class Sessions : VoiceInteractionSessionService() {
 class Session(ctx: Context) : VoiceInteractionSession(ctx) {
 
     override fun onCreate() {
-        super.onCreate()
         setUiEnabled(false)
+        super.onCreate()
     }
 
     override fun onPrepareShow(args: Bundle?, showFlags: Int) {
-        super.onPrepareShow(args, showFlags)
         setUiEnabled(false)
+        super.onPrepareShow(args, showFlags)
     }
 
     override fun onCreateContentView(): View? = null

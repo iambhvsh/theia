@@ -19,7 +19,7 @@
 
     <application
         android:label="Theia"
-        android:theme="@android:style/Theme.Material.Light.DarkActionBar"
+        android:theme="@style/Theme.Theia.BottomSheet"
         android:allowBackup="false"
         android:usesCleartextTraffic="false">
 

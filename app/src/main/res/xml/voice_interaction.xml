@@ -2,5 +2,5 @@
 <voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:sessionService="in.iambhvsh.theia.Sessions"
     android:recognitionService="in.iambhvsh.theia.Recognizer"
-    android:supportsAssist="true"
+    android:supportsAssist="false"
     android:supportsLaunchVoiceAssistFromKeyguard="true" />

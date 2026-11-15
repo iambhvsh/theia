@@ -13,6 +13,7 @@ import android.graphics.SweepGradient
 import android.os.Build
 import android.view.RoundedCorner
 import android.view.View
+import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 
 /**
@@ -74,13 +75,14 @@ class Shimmer(context: Context) : View(context) {
                 float minDim = min(iResolution.x, iResolution.y);
                 float baseThickness = minDim * mix(0.024, 0.052, verticalBias);
                 float audioBoost = minDim * 0.038 * iAudioLevel * organicWave;
-                float totalThickness = (baseThickness + audioBoost + (minDim * 0.016 * organicWave)) * iIntensity;
+                float totalThickness = (baseThickness + audioBoost + (minDim * 0.016 * organicWave));
 
-                // Dual-layer exponential light falloff: sharp bright core + wide atmospheric bloom
+                // Dual-layer exponential light falloff with edge retraction ("suction" effect into the bezel)
                 float d = max(distFromEdge, 0.0);
-                float coreGlow = exp(-d / max(totalThickness * 0.35, 1.0));
-                float softBloom = exp(-d / max(totalThickness * 1.45, 1.0));
-                float combinedGlow = (coreGlow * 0.78 + softBloom * 0.48) * iIntensity;
+                float retract = max(pow(iIntensity, 1.6), 0.001);
+                float coreGlow = exp(-d / max(totalThickness * 0.35 * retract, 0.8));
+                float softBloom = exp(-d / max(totalThickness * 1.45 * retract, 1.5)) * (iIntensity * iIntensity);
+                float combinedGlow = (coreGlow * 0.88 + softBloom * 0.44) * iIntensity;
 
                 // Smooth 4-color orbital sweep around the perimeter
                 float phase = fract((angle / 6.2831853) + (iTime * mix(0.18, 0.55, iThinking)));
@@ -126,10 +128,8 @@ class Shimmer(context: Context) : View(context) {
     var onSettleCallback: (() -> Unit)? = null
     private var settleFired = false
 
-    private val autoIdleRunnable = Runnable {
-        if (!isThinking) {
-            stopShimmer()
-        }
+    private val autoStopRunnable = Runnable {
+        stopShimmer()
     }
 
     init {
@@ -221,19 +221,19 @@ class Shimmer(context: Context) : View(context) {
 
     /**
      * Activates the Gemini Edge Glow with a high-energy trigger surge,
-     * settling into audio-reactive breathing.
+     * settling into audio-reactive breathing, and cleanly auto-hiding after 2 seconds.
      */
     fun startShimmer() {
         stopShimmer()
-        removeCallbacks(autoIdleRunnable)
+        removeCallbacks(autoStopRunnable)
         settleFired = false
         visibility = VISIBLE
         timeSeconds = 0f
         audioLevel = 0f
         isThinking = false
 
-        // Watchdog: automatically fade out if sitting idle in ambient silence for >7.5 seconds
-        postDelayed(autoIdleRunnable, 7500L)
+        // Automatically hide and release GPU after 2 seconds from activation
+        postDelayed(autoStopRunnable, 2000L)
 
         // Continuous high-performance time driver (60 - 120 FPS)
         loopAnimator = ValueAnimator.ofFloat(0f, 62.83185f).apply {
@@ -241,7 +241,7 @@ class Shimmer(context: Context) : View(context) {
             repeatCount = ValueAnimator.INFINITE
             repeatMode = ValueAnimator.RESTART
             interpolator = null // Linear
-            addUpdateListener { va ->
+            addUpdateListener {
                 timeSeconds += 0.016f
                 invalidate()
             }
@@ -250,7 +250,7 @@ class Shimmer(context: Context) : View(context) {
 
         // Three-Phase State Choreography:
         // 1. Trigger Surge: rapid inward expansion (0ms -> 300ms)
-        // 2. Settles to continuous perimeter glow
+        // 2. Settles to perimeter breathing
         intensityAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 320L
             interpolator = DecelerateInterpolator()
@@ -267,51 +267,32 @@ class Shimmer(context: Context) : View(context) {
     }
 
     /**
-     * Smoothly modulates glow thickness in real-time with microphone RMS energy.
+     * Smoothly modulates glow thickness in real-time with microphone RMS energy
+     * while active during the initial activation window.
      */
     fun setAudioLevel(normalizedLevel: Float) {
-        if (visibility != VISIBLE || intensity <= 0f) return
+        if (visibility != VISIBLE || intensity <= 0.01f) return
         val target = normalizedLevel.coerceIn(0f, 1f)
-        // Reset idle watchdog on detected speech activity
-        if (target > 0.08f) {
-            removeCallbacks(autoIdleRunnable)
-            postDelayed(autoIdleRunnable, 7500L)
-        }
-        // Smooth interpolation to avoid visual jitter
         audioLevel = (audioLevel * 0.6f) + (target * 0.4f)
         invalidate()
     }
 
     /**
-     * Switches the shader into high-speed orbital swirling during AI inference.
+     * Updates thinking mode if the gradient is active.
      */
     fun setThinking(thinking: Boolean) {
         isThinking = thinking
-        removeCallbacks(autoIdleRunnable)
-        if (thinking) {
-            // Keep glow active during processing
-            if (visibility != VISIBLE) {
-                visibility = VISIBLE
-                intensity = 1f
-                if (loopAnimator == null || !loopAnimator!!.isRunning) {
-                    startShimmer()
-                    return
-                }
-            }
-        } else {
-            // Settle or prepare for stop
-            postDelayed(autoIdleRunnable, 1500L)
-        }
-        if (visibility == VISIBLE) {
+        if (visibility == VISIBLE && intensity > 0.01f) {
             invalidate()
         }
     }
 
     /**
-     * Gracefully fades out the edge glow and releases GPU loop.
+     * Gracefully fades out the edge glow with an accelerating edge suction effect
+     * that retracts the light right into the bezel, releasing the GPU loop.
      */
     fun stopShimmer() {
-        removeCallbacks(autoIdleRunnable)
+        removeCallbacks(autoStopRunnable)
         intensityAnimator?.cancel()
         val current = intensity
         if (current <= 0.01f) {
@@ -323,8 +304,8 @@ class Shimmer(context: Context) : View(context) {
         }
 
         intensityAnimator = ValueAnimator.ofFloat(current, 0f).apply {
-            duration = 280L
-            interpolator = DecelerateInterpolator()
+            duration = 320L
+            interpolator = AccelerateInterpolator(1.4f)
             addUpdateListener { va ->
                 intensity = va.animatedValue as Float
                 invalidate()
@@ -343,7 +324,7 @@ class Shimmer(context: Context) : View(context) {
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
-        removeCallbacks(autoIdleRunnable)
+        removeCallbacks(autoStopRunnable)
         loopAnimator?.cancel()
         loopAnimator = null
         intensityAnimator?.cancel()

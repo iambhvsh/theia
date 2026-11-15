@@ -1231,7 +1231,6 @@ class Screen : Activity() {
         ui {
             setMicActive(true)
             setPillStatus("Listening…")
-            shimmerView.startShimmer()
         }
 
         exec.execute {
