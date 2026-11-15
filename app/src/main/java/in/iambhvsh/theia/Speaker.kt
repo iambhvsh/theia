@@ -27,22 +27,11 @@ object Speaker {
     private const val KEY_PRESET = "voice_preset_id"
 
     val PRESETS = listOf(
-        // Female voices (Verified)
+        VoiceItem("emma", "Emma (US Female • Smooth) 🌟", "en-us-x-iog-network", requiresInternet = true),
         VoiceItem("ava", "Ava (US Female • Warm)", "en-us-x-sfg-network", requiresInternet = true),
-        VoiceItem("emma", "Emma (US Female • Smooth)", "en-us-x-iog-network", requiresInternet = true),
-        VoiceItem("olivia", "Olivia (UK Female • British)", "en-gb-x-gba-network", requiresInternet = true),
-        VoiceItem("ananya", "Ananya (IN Female • Clear)", "en-in-x-enc-network", requiresInternet = true),
-
-        // Male voices (Verified)
         VoiceItem("liam", "Liam (US Male • Crisp)", "en-us-x-tpd-network", requiresInternet = true),
-        VoiceItem("noah", "Noah (US Male • Expressive)", "en-us-x-iol-network", requiresInternet = true),
-        VoiceItem("lucas", "Lucas (US Male • Casual)", "en-us-x-iom-network", requiresInternet = true),
         VoiceItem("oliver", "Oliver (UK Male • British)", "en-gb-x-rjs-network", requiresInternet = true),
-        VoiceItem("aarav", "Aarav (IN Male • Warm)", "en-in-x-ena-network", requiresInternet = true),
-
-        // Offline voices (100% on-device, no internet required)
-        VoiceItem("chloe_offline", "Chloe (Offline Female • No Data)", "en-us-x-sfg-local", requiresInternet = false),
-        VoiceItem("leo_offline", "Leo (Offline Male • No Data)", "en-us-x-iom-local", requiresInternet = false)
+        VoiceItem("chloe_offline", "Chloe (Offline • 0% Data)", "en-us-x-sfg-local", requiresInternet = false)
     )
 
     private var tts: TextToSpeech? = null
@@ -52,17 +41,14 @@ object Speaker {
 
     fun getPreset(ctx: Context): VoiceItem {
         val id = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_PRESET, "ava") ?: "ava"
+            .getString(KEY_PRESET, "emma") ?: "emma"
         val mappedId = when (id) {
-            "female_warm" -> "ava"
-            "female_crisp" -> "emma"
-            "female_expressive" -> "emma"
-            "female_british" -> "olivia"
-            "male_warm" -> "liam"
-            "male_deep" -> "noah"
-            "sophia" -> "noah"
-            "offline_female" -> "chloe_offline"
-            else -> id
+            "emma" -> "emma"
+            "ava", "female_warm" -> "ava"
+            "liam", "male_warm", "male_deep", "noah", "lucas", "sophia" -> "liam"
+            "oliver", "female_british" -> "oliver"
+            "chloe_offline", "offline_female", "leo_offline" -> "chloe_offline"
+            else -> "emma"
         }
         return PRESETS.firstOrNull { it.id == mappedId } ?: PRESETS[0]
     }
