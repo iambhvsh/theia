@@ -84,11 +84,13 @@ class Screen : Activity() {
     private lateinit var expandedSendBtn: ImageButton
 
     @Volatile private var busy = false
+    @Volatile private var isThinkingQuery = false
     private var isExpanded = false
     private val currentSessionId = UUID.randomUUID().toString()
 
     @Suppress("DEPRECATION")
     override fun onCreate(b: Bundle?) {
+        overridePendingTransition(0, 0)
         super.onCreate(b)
 
         window.apply {
@@ -125,6 +127,8 @@ class Screen : Activity() {
             setBackgroundColor(0x77000000) // 45% soft dark dim
             setOnClickListener {
                 Speaker.stop()
+                Recorder.stop()
+                shimmerView.stopShimmer()
                 if (isExpanded) {
                     collapseInput()
                 } else {
@@ -307,6 +311,8 @@ class Screen : Activity() {
         responseCard.visibility = View.GONE
         topBar.visibility = View.GONE
         collapseInput()
+        overlayContainer.translationY = 0f
+        overlayContainer.alpha = 1f
         shimmerView.startShimmer()
         listen()
         i.getStringExtra("speak")?.let {
@@ -316,25 +322,31 @@ class Screen : Activity() {
 
     override fun onPause() {
         Speaker.stop()
+        Recorder.stop()
         shimmerView.stopShimmer()
         super.onPause()
     }
 
     override fun onStop() {
         Speaker.stop()
+        Recorder.stop()
         shimmerView.stopShimmer()
         super.onStop()
     }
 
     override fun onDestroy() {
         Speaker.stop()
+        Recorder.stop()
         shimmerView.stopShimmer()
         super.onDestroy()
     }
 
     override fun finish() {
         Speaker.stop()
+        Recorder.stop()
+        shimmerView.stopShimmer()
         super.finish()
+        overridePendingTransition(0, 0)
     }
 
     private fun resDrawable(name: String): Int = resources.getIdentifier(name, "drawable", packageName)
@@ -907,12 +919,15 @@ class Screen : Activity() {
     @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
     override fun onBackPressed() {
         Speaker.stop()
+        Recorder.stop()
         if (settingsPage.visibility == View.VISIBLE) {
             showOverlay()
         } else if (isExpanded) {
             collapseInput()
         } else {
+            shimmerView.stopShimmer()
             super.onBackPressed()
+            overridePendingTransition(0, 0)
         }
     }
 
@@ -1187,6 +1202,7 @@ class Screen : Activity() {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
         ui {
+            isThinkingQuery = false
             shimmerView.setThinking(false)
             shimmerView.stopShimmer()
             topBar.visibility = View.VISIBLE
@@ -1206,13 +1222,16 @@ class Screen : Activity() {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
             return
         }
-        if (busy) return
+        if (busy) {
+            Recorder.stop()
+        }
         busy = true
         Speaker.stop()
 
         ui {
             setMicActive(true)
             setPillStatus("Listening…")
+            shimmerView.startShimmer()
         }
 
         exec.execute {
@@ -1262,10 +1281,13 @@ class Screen : Activity() {
             } finally {
                 busy = false
                 ui {
-                    shimmerView.setThinking(false)
                     setMicActive(false)
                     if (!Speaker.isSpeaking) {
                         setPillStatus(null)
+                    }
+                    if (!isThinkingQuery) {
+                        shimmerView.setThinking(false)
+                        shimmerView.stopShimmer()
                     }
                 }
             }
@@ -1273,6 +1295,7 @@ class Screen : Activity() {
     }
 
     private fun processQuery(prompt: String) {
+        isThinkingQuery = true
         ui {
             topBar.visibility = View.VISIBLE
             responseCard.visibility = View.VISIBLE
@@ -1402,8 +1425,10 @@ class Screen : Activity() {
                 ui { showStatus("Error: ${e.message}") }
             } finally {
                 busy = false
+                isThinkingQuery = false
                 ui {
                     shimmerView.setThinking(false)
+                    shimmerView.stopShimmer()
                     setMicActive(false)
                     if (!Speaker.isSpeaking) {
                         setPillStatus(null)

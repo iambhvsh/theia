@@ -126,6 +126,12 @@ class Shimmer(context: Context) : View(context) {
     var onSettleCallback: (() -> Unit)? = null
     private var settleFired = false
 
+    private val autoIdleRunnable = Runnable {
+        if (!isThinking) {
+            stopShimmer()
+        }
+    }
+
     init {
         isClickable = false
         isFocusable = false
@@ -219,11 +225,15 @@ class Shimmer(context: Context) : View(context) {
      */
     fun startShimmer() {
         stopShimmer()
+        removeCallbacks(autoIdleRunnable)
         settleFired = false
         visibility = VISIBLE
         timeSeconds = 0f
         audioLevel = 0f
         isThinking = false
+
+        // Watchdog: automatically fade out if sitting idle in ambient silence for >7.5 seconds
+        postDelayed(autoIdleRunnable, 7500L)
 
         // Continuous high-performance time driver (60 - 120 FPS)
         loopAnimator = ValueAnimator.ofFloat(0f, 62.83185f).apply {
@@ -260,12 +270,16 @@ class Shimmer(context: Context) : View(context) {
      * Smoothly modulates glow thickness in real-time with microphone RMS energy.
      */
     fun setAudioLevel(normalizedLevel: Float) {
+        if (visibility != VISIBLE || intensity <= 0f) return
         val target = normalizedLevel.coerceIn(0f, 1f)
+        // Reset idle watchdog on detected speech activity
+        if (target > 0.08f) {
+            removeCallbacks(autoIdleRunnable)
+            postDelayed(autoIdleRunnable, 7500L)
+        }
         // Smooth interpolation to avoid visual jitter
         audioLevel = (audioLevel * 0.6f) + (target * 0.4f)
-        if (visibility == VISIBLE) {
-            invalidate()
-        }
+        invalidate()
     }
 
     /**
@@ -273,6 +287,21 @@ class Shimmer(context: Context) : View(context) {
      */
     fun setThinking(thinking: Boolean) {
         isThinking = thinking
+        removeCallbacks(autoIdleRunnable)
+        if (thinking) {
+            // Keep glow active during processing
+            if (visibility != VISIBLE) {
+                visibility = VISIBLE
+                intensity = 1f
+                if (loopAnimator == null || !loopAnimator!!.isRunning) {
+                    startShimmer()
+                    return
+                }
+            }
+        } else {
+            // Settle or prepare for stop
+            postDelayed(autoIdleRunnable, 1500L)
+        }
         if (visibility == VISIBLE) {
             invalidate()
         }
@@ -282,16 +311,19 @@ class Shimmer(context: Context) : View(context) {
      * Gracefully fades out the edge glow and releases GPU loop.
      */
     fun stopShimmer() {
+        removeCallbacks(autoIdleRunnable)
         intensityAnimator?.cancel()
         val current = intensity
-        if (current <= 0f) {
+        if (current <= 0.01f) {
+            intensity = 0f
             visibility = GONE
             loopAnimator?.cancel()
+            loopAnimator = null
             return
         }
 
         intensityAnimator = ValueAnimator.ofFloat(current, 0f).apply {
-            duration = 300L
+            duration = 280L
             interpolator = DecelerateInterpolator()
             addUpdateListener { va ->
                 intensity = va.animatedValue as Float
@@ -302,6 +334,7 @@ class Shimmer(context: Context) : View(context) {
                     intensity = 0f
                     visibility = GONE
                     loopAnimator?.cancel()
+                    loopAnimator = null
                 }
             })
         }
@@ -310,7 +343,9 @@ class Shimmer(context: Context) : View(context) {
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        removeCallbacks(autoIdleRunnable)
         loopAnimator?.cancel()
+        loopAnimator = null
         intensityAnimator?.cancel()
     }
 }

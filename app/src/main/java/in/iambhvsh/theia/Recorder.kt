@@ -17,6 +17,13 @@ object Recorder {
     private const val PRE_ROLL_CHUNKS = 5           // Keep ~500 ms of audio before speech trigger
     private const val TRAILING_PAD_CHUNKS = 2       // Retain ~200 ms padding at end of speech to prevent clipping
 
+    @Volatile
+    private var isCancelled = false
+
+    fun stop() {
+        isCancelled = true
+    }
+
     /** Returns 16 kHz mono float PCM, or empty if no speech. Blocks. */
     @SuppressLint("MissingPermission")
     fun capture(
@@ -24,6 +31,7 @@ object Recorder {
         onRmsUpdate: ((Float) -> Unit)? = null,
         onSpeechDetected: (() -> Unit)? = null
     ): FloatArray {
+        isCancelled = false
         val chunk = SR / 10 // 1600 samples (100 ms)
 
         val minBuf = AudioRecord.getMinBufferSize(
@@ -73,7 +81,15 @@ object Recorder {
         rec.startRecording()
         try {
             while (out.size + chunk <= SR * maxSec) {
+                if (isCancelled) {
+                    Log.d(TAG, "Audio capture cancelled")
+                    return FloatArray(0)
+                }
                 val r = rec.read(buf, 0, chunk, AudioRecord.READ_BLOCKING)
+                if (isCancelled) {
+                    Log.d(TAG, "Audio capture cancelled after read")
+                    return FloatArray(0)
+                }
                 if (r <= 0) {
                     Log.w(TAG, "AudioRecord.read returned $r")
                     break

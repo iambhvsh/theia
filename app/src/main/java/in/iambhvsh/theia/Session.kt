@@ -5,6 +5,8 @@ import android.content.Intent
 import android.os.Bundle
 import android.service.voice.VoiceInteractionSession
 import android.service.voice.VoiceInteractionSessionService
+import android.util.Log
+import android.view.View
 
 class Sessions : VoiceInteractionSessionService() {
     override fun onNewSession(args: Bundle?): VoiceInteractionSession = Session(this)
@@ -12,8 +14,11 @@ class Sessions : VoiceInteractionSessionService() {
 
 /**
  * Wake gesture and power button handler.
- * setUiEnabled(false) suppresses the default framework session window,
- * preventing any blank white box or starting border from flashing on screen.
+ * - setUiEnabled(false) suppresses the default framework session window,
+ *   preventing any blank white box or starting border from flashing on screen.
+ * - startAssistantActivity launches Theia's overlay inside Android's dedicated assistant layer.
+ * - We do NOT call hide() in onShow(), allowing Theia's assistant activity to run smoothly
+ *   without being immediately dismissed by the OS.
  */
 class Session(ctx: Context) : VoiceInteractionSession(ctx) {
 
@@ -22,13 +27,30 @@ class Session(ctx: Context) : VoiceInteractionSession(ctx) {
         setUiEnabled(false)
     }
 
+    override fun onPrepareShow(args: Bundle?, showFlags: Int) {
+        super.onPrepareShow(args, showFlags)
+        setUiEnabled(false)
+    }
+
+    override fun onCreateContentView(): View? = null
+
     override fun onShow(args: Bundle?, showFlags: Int) {
         super.onShow(args, showFlags)
+        Log.d("TheiaSession", "onShow triggered flags=$showFlags")
         val intent = Intent(context, Screen::class.java).apply {
             putExtra("autolisten", true)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         startAssistantActivity(intent)
+    }
+
+    override fun onHide() {
+        super.onHide()
+        Log.d("TheiaSession", "onHide")
+    }
+
+    override fun onBackPressed() {
+        super.onBackPressed()
         hide()
     }
 }
