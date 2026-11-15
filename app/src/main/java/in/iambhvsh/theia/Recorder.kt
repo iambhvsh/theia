@@ -19,7 +19,11 @@ object Recorder {
 
     /** Returns 16 kHz mono float PCM, or empty if no speech. Blocks. */
     @SuppressLint("MissingPermission")
-    fun capture(maxSec: Int = 15, onSpeechDetected: (() -> Unit)? = null): FloatArray {
+    fun capture(
+        maxSec: Int = 15,
+        onRmsUpdate: ((Float) -> Unit)? = null,
+        onSpeechDetected: (() -> Unit)? = null
+    ): FloatArray {
         val chunk = SR / 10 // 1600 samples (100 ms)
 
         val minBuf = AudioRecord.getMinBufferSize(
@@ -83,6 +87,7 @@ object Recorder {
                     sumSq += s * s
                 }
                 val rms = sqrt(sumSq / r).toFloat()
+                onRmsUpdate?.invoke((rms * 15f).coerceIn(0f, 1f))
 
                 // Dynamically track ambient noise baseline before speech triggers
                 if (!started && rms < 0.008f) {
