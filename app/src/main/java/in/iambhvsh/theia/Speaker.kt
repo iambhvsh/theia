@@ -16,7 +16,8 @@ import java.util.concurrent.TimeUnit
 data class VoiceItem(
     val id: String,
     val label: String,
-    val systemVoiceName: String
+    val systemVoiceName: String,
+    val requiresInternet: Boolean = systemVoiceName.endsWith("-network")
 )
 
 // Theia's voice engine: Google Speech Services
@@ -26,13 +27,17 @@ object Speaker {
     private const val KEY_PRESET = "voice_preset_id"
 
     val PRESETS = listOf(
-        VoiceItem("female_warm", "Natural Female (Warm) 🌟", "en-us-x-sfg-network"),
-        VoiceItem("female_crisp", "Natural Female (Crisp & Bright) 🌟", "en-us-x-tpd-network"),
-        VoiceItem("female_expressive", "Natural Female (Expressive) 🌟", "en-us-x-iol-network"),
-        VoiceItem("female_british", "Natural Female (British) 🌟", "en-gb-x-rjs-network"),
-        VoiceItem("male_warm", "Natural Male (Warm) 🌟", "en-us-x-iom-network"),
-        VoiceItem("male_deep", "Natural Male (Deep) 🌟", "en-us-x-iog-network"),
-        VoiceItem("offline_female", "Offline Fast Female (No Data)", "en-us-x-sfg-local")
+        VoiceItem("ava", "Ava (US Female • Warm)", "en-us-x-sfg-network", requiresInternet = true),
+        VoiceItem("emma", "Emma (US Female • Crisp)", "en-us-x-tpd-network", requiresInternet = true),
+        VoiceItem("sophia", "Sophia (US Female • Expressive)", "en-us-x-iol-network", requiresInternet = true),
+        VoiceItem("olivia", "Olivia (UK Female • British)", "en-gb-x-rjs-network", requiresInternet = true),
+        VoiceItem("ananya", "Ananya (IN Female • Clear)", "en-in-x-enc-network", requiresInternet = true),
+        VoiceItem("liam", "Liam (US Male • Casual)", "en-us-x-iom-network", requiresInternet = true),
+        VoiceItem("noah", "Noah (US Male • Deep)", "en-us-x-iog-network", requiresInternet = true),
+        VoiceItem("oliver", "Oliver (UK Male • British)", "en-gb-x-gbd-network", requiresInternet = true),
+        VoiceItem("aarav", "Aarav (IN Male • Warm)", "en-in-x-ena-network", requiresInternet = true),
+        VoiceItem("chloe_offline", "Chloe (Offline • No Internet)", "en-us-x-sfg-local", requiresInternet = false),
+        VoiceItem("leo_offline", "Leo (Offline • No Internet)", "en-us-x-iom-local", requiresInternet = false)
     )
 
     private var tts: TextToSpeech? = null
@@ -42,8 +47,18 @@ object Speaker {
 
     fun getPreset(ctx: Context): VoiceItem {
         val id = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_PRESET, "female_warm") ?: "female_warm"
-        return PRESETS.firstOrNull { it.id == id } ?: PRESETS[0]
+            .getString(KEY_PRESET, "ava") ?: "ava"
+        val mappedId = when (id) {
+            "female_warm" -> "ava"
+            "female_crisp" -> "emma"
+            "female_expressive" -> "sophia"
+            "female_british" -> "olivia"
+            "male_warm" -> "liam"
+            "male_deep" -> "noah"
+            "offline_female" -> "chloe_offline"
+            else -> id
+        }
+        return PRESETS.firstOrNull { it.id == mappedId } ?: PRESETS[0]
     }
 
     fun setPreset(ctx: Context, presetId: String) {
@@ -91,7 +106,18 @@ object Speaker {
             return
         }
 
-        // Fallback: match any neural English voice or local voice
+        // If network voice not found, fall back to local version of same speaker
+        if (voiceName.endsWith("-network")) {
+            val localName = voiceName.removeSuffix("-network") + "-local"
+            val localMatch = voices.firstOrNull { it.name.equals(localName, ignoreCase = true) }
+            if (localMatch != null) {
+                t.voice = localMatch
+                Log.d(TAG, "Applied local speaker voice: ${localMatch.name}")
+                return
+            }
+        }
+
+        // Generic fallback: match any neural English voice or local voice
         val enVoices = voices.filter { it.locale.language.equals("en", ignoreCase = true) }
         val fallback = enVoices.firstOrNull { it.name.contains("network", ignoreCase = true) }
             ?: enVoices.firstOrNull()
@@ -144,7 +170,16 @@ object Speaker {
         }
 
         val startMs = System.currentTimeMillis()
-        val res = t.speak(clean, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+        var res = t.speak(clean, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+        if (res != TextToSpeech.SUCCESS && t.voice?.isNetworkConnectionRequired == true) {
+            val localName = t.voice?.name?.removeSuffix("-network") + "-local"
+            val localVoice = t.voices?.firstOrNull { it.name.equals(localName, ignoreCase = true) }
+            if (localVoice != null) {
+                t.voice = localVoice
+                Log.w(TAG, "Network TTS failed, falling back to local: ${localVoice.name}")
+                res = t.speak(clean, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+            }
+        }
         if (res == TextToSpeech.SUCCESS) {
             Log.d(TAG, "TTS queued in ${System.currentTimeMillis() - startMs} ms for '$clean'")
             try {
