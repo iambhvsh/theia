@@ -75,6 +75,7 @@ class Screen : Activity() {
     // Floating Input Pill Elements (Clean: Text + Mic / Send only)
     private lateinit var inputCardContainer: FrameLayout
     private lateinit var collapsedInputRow: LinearLayout
+    private lateinit var pillStatusText: TextView
     private lateinit var expandedInputCard: LinearLayout
     private lateinit var promptInput: EditText
     private lateinit var collapsedMicBtn: ImageButton
@@ -232,12 +233,16 @@ class Screen : Activity() {
         Speaker.onSpeakingStateChanged = { speaking ->
             ui {
                 if (speaking) {
+                    setPillStatus("Theia is speaking…")
                     statusTextView.text = "Theia is speaking…"
                     statusTextView.visibility = View.VISIBLE
                     volumeBtn.setColorFilter(0xFF3084FF.toInt())
-                } else if (!busy) {
+                } else {
                     statusTextView.visibility = View.GONE
                     volumeBtn.setColorFilter(0xFFC4C7C5.toInt())
+                    if (!busy) {
+                        setPillStatus(null)
+                    }
                 }
             }
         }
@@ -415,12 +420,6 @@ class Screen : Activity() {
             }
         }
 
-        val thumbUpBtn = makeActionBtn(resDrawable("ic_thumb_up")) {
-            Toast.makeText(this, "Feedback received", Toast.LENGTH_SHORT).show()
-        }
-        val thumbDownBtn = makeActionBtn(resDrawable("ic_thumb_down")) {
-            Toast.makeText(this, "Feedback received", Toast.LENGTH_SHORT).show()
-        }
         val shareBtn = makeActionBtn(resDrawable("ic_share")) {
             val content = responseTextView.text.toString()
             if (content.isNotBlank()) {
@@ -467,8 +466,6 @@ class Screen : Activity() {
             popup.show()
         }
 
-        toolbar.addView(thumbUpBtn)
-        toolbar.addView(thumbDownBtn)
         toolbar.addView(shareBtn)
         toolbar.addView(copyBtn)
         toolbar.addView(moreVertBtn)
@@ -540,7 +537,7 @@ class Screen : Activity() {
             }
 
             val text = TextView(this@Screen).apply {
-                this.text = "Share screen with Live"
+                this.text = "Share screen with Theia"
                 textSize = 13.5f
                 setTextColor(0xFFE3E3E3.toInt())
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
@@ -624,9 +621,9 @@ class Screen : Activity() {
             setPadding((24 * density).toInt(), 0, (14 * density).toInt(), 0)
         }
 
-        // Center "Ask Gemini" Text / Tap Area
-        val hintText = TextView(this).apply {
-            text = "Ask Gemini"
+        // Center "Ask Theia" Text / Tap Area & Dynamic Status
+        pillStatusText = TextView(this).apply {
+            text = "Ask Theia"
             textSize = 17.5f
             setTextColor(0xFF8E918F.toInt())
             typeface = Typeface.create("sans-serif", Typeface.NORMAL)
@@ -638,7 +635,7 @@ class Screen : Activity() {
                 expandInput()
             }
         }
-        collapsedInputRow.addView(hintText)
+        collapsedInputRow.addView(pillStatusText)
 
         // Right Mic Button (Alone, no icon beside it)
         collapsedMicBtn = ImageButton(this).apply {
@@ -676,7 +673,7 @@ class Screen : Activity() {
 
         // Top Row: Text Input Field
         promptInput = EditText(this).apply {
-            hint = "Ask Gemini"
+            hint = "Ask Theia"
             textSize = 17f
             setTextColor(0xFFE3E3E3.toInt())
             setHintTextColor(0xFF8E918F.toInt())
@@ -790,6 +787,9 @@ class Screen : Activity() {
             setColor(0xFF1E1F20.toInt())
             cornerRadius = 32f * resources.displayMetrics.density
         }
+        if (!Speaker.isSpeaking && !busy) {
+            setPillStatus(null)
+        }
     }
 
     private fun submitPrompt() {
@@ -798,6 +798,20 @@ class Screen : Activity() {
             promptInput.setText("")
             collapseInput()
             processQuery(q)
+        }
+    }
+
+    private fun setPillStatus(status: String? = null) {
+        ui {
+            if (::pillStatusText.isInitialized) {
+                if (status.isNullOrBlank()) {
+                    pillStatusText.text = "Ask Theia"
+                    pillStatusText.setTextColor(0xFF8E918F.toInt())
+                } else {
+                    pillStatusText.text = status
+                    pillStatusText.setTextColor(0xFFE3E3E3.toInt())
+                }
+            }
         }
     }
 
@@ -1147,6 +1161,7 @@ class Screen : Activity() {
 
         ui {
             setMicActive(true)
+            setPillStatus("Listening…")
         }
 
         exec.execute {
@@ -1159,6 +1174,7 @@ class Screen : Activity() {
                     onSpeechDetected = {
                         ui {
                             setMicActive(true)
+                            setPillStatus("Listening…")
                         }
                     }
                 )
@@ -1170,6 +1186,7 @@ class Screen : Activity() {
 
                 ui {
                     setMicActive(false)
+                    setPillStatus("Transcribing…")
                 }
 
                 val rawTranscribe = Engine.transcribe(pcm)
@@ -1193,6 +1210,9 @@ class Screen : Activity() {
                 busy = false
                 ui {
                     setMicActive(false)
+                    if (!Speaker.isSpeaking) {
+                        setPillStatus(null)
+                    }
                 }
             }
         }
@@ -1205,6 +1225,7 @@ class Screen : Activity() {
             contextRow.visibility = View.GONE
             responseTextView.text = prompt
             showStatus("Thinking…")
+            setPillStatus("Thinking…")
         }
 
         exec.execute {
@@ -1329,6 +1350,9 @@ class Screen : Activity() {
                 busy = false
                 ui {
                     setMicActive(false)
+                    if (!Speaker.isSpeaking) {
+                        setPillStatus(null)
+                    }
                 }
             }
         }
