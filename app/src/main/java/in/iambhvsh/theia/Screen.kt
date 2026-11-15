@@ -1375,10 +1375,8 @@ class Screen : Activity() {
                         }
                         return@execute
                     } catch (e: Exception) {
-                        android.util.Log.e("Theia", "Groq request failed", e)
-                        val err = e.message ?: "Connection error"
-                        say("Sorry, Groq returned an error: $err")
-                        return@execute
+                        android.util.Log.e("Theia", "Groq request failed, falling back to local engine", e)
+                        // Fall through to on-device local engine fallback below
                     }
                 }
 

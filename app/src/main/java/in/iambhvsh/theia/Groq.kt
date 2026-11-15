@@ -248,6 +248,10 @@ object Groq {
 
             if (code !in 200..299) {
                 Log.e(TAG, "Groq API error HTTP $code: $responseBody")
+                val rescued = tryParseFailedToolCall(responseBody)
+                if (rescued != null) {
+                    return rescued
+                }
                 throw IOException("Groq error ($code): $responseBody")
             }
 
@@ -288,6 +292,55 @@ object Groq {
             )
         } finally {
             conn.disconnect()
+        }
+    }
+
+    private fun tryParseFailedToolCall(errJson: String): Response? {
+        try {
+            val root = JSONObject(errJson)
+            val error = root.optJSONObject("error") ?: return null
+            val failedGen = error.optString("failed_generation")
+            if (failedGen.isNullOrBlank()) return null
+
+            val fnMatch = Regex("<function=([a-zA-Z0-9_]+)>").find(failedGen) ?: return null
+            val fnName = fnMatch.groupValues[1]
+
+            val args = JSONObject()
+            val paramMatches = Regex("<parameter[\\t ]*([a-zA-Z0-9_]*)>([\\s\\S]*?)</parameter>").findAll(failedGen)
+            for (pm in paramMatches) {
+                var pName = pm.groupValues[1].trim()
+                val pVal = pm.groupValues[2].trim()
+                if (pName.isEmpty()) {
+                    if (fnName == "open_app") pName = "name"
+                    else if (fnName == "search_files") pName = "query"
+                }
+                args.put(pName, pVal)
+            }
+
+            if (fnName == "open_app" && !args.has("name")) {
+                val valMatch = Regex("<parameter[\\s\\S]*?>([\\s\\S]*?)</parameter>").find(failedGen)
+                if (valMatch != null) {
+                    args.put("name", valMatch.groupValues[1].trim())
+                }
+            }
+
+            Log.d(TAG, "Successfully rescued failed tool call from Groq: $fnName args=$args")
+            val toolCalls = listOf(Call(fnName, args, "rescued_" + System.currentTimeMillis()))
+            return Response(
+                content = null,
+                toolCalls = toolCalls,
+                rawToolCallsJson = JSONArray().put(JSONObject().apply {
+                    put("id", toolCalls[0].id)
+                    put("type", "function")
+                    put("function", JSONObject().apply {
+                        put("name", fnName)
+                        put("arguments", args.toString())
+                    })
+                }).toString()
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "Could not rescue failed tool call", e)
+            return null
         }
     }
 }
