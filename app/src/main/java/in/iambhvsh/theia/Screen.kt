@@ -58,6 +58,7 @@ class Screen : Activity() {
 
     private lateinit var rootLayout: FrameLayout
     private lateinit var backdropView: View
+    private lateinit var shimmerView: Shimmer
     private lateinit var overlayContainer: LinearLayout
     private lateinit var settingsPage: ScrollView
 
@@ -90,9 +91,19 @@ class Screen : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
 
-        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.setDecorFitsSystemWindows(false)
+        window.apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+            clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS or WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
+            addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+            statusBarColor = android.graphics.Color.TRANSPARENT
+            navigationBarColor = android.graphics.Color.TRANSPARENT
+            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                setDecorFitsSystemWindows(false)
+            }
         }
 
         actions = Actions(this)
@@ -123,6 +134,23 @@ class Screen : Activity() {
         }
         rootLayout.addView(backdropView)
 
+        // 1.5 Gemini Full-Screen Edge Shimmer & Neural Glow
+        shimmerView = Shimmer(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            onSettleCallback = {
+                overlayContainer.animate()
+                    .translationY(0f)
+                    .alpha(1f)
+                    .setDuration(260L)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator())
+                    .start()
+            }
+        }
+        rootLayout.addView(shimmerView)
+
         // 2. Main Overlay Vertical Stack (Aligned to BOTTOM)
         overlayContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -137,6 +165,8 @@ class Screen : Activity() {
             }
             setPadding(0, 0, 0, (14 * density).toInt())
             setOnClickListener {} // Prevent touch pass-through to backdrop
+            translationY = 14f * density
+            alpha = 0f
         }
 
         // Handle navigation bar and keyboard insets
@@ -255,10 +285,16 @@ class Screen : Activity() {
             }
         }
 
-        // Automatic listen on launch like Google Assistant / Gemini
+        // Automatic listen & Gemini edge shimmer on launch
         window.decorView.post {
+            shimmerView.startShimmer()
             listen()
         }
+        window.decorView.postDelayed({
+            if (overlayContainer.alpha < 0.9f) {
+                overlayContainer.animate().translationY(0f).alpha(1f).setDuration(250L).start()
+            }
+        }, 450L)
 
         intent.getStringExtra("speak")?.let {
             if (it.isNotBlank()) exec.execute { Speaker.speak(applicationContext, it) }
@@ -268,6 +304,10 @@ class Screen : Activity() {
     override fun onNewIntent(i: Intent) {
         super.onNewIntent(i)
         intent = i
+        responseCard.visibility = View.GONE
+        topBar.visibility = View.GONE
+        collapseInput()
+        shimmerView.startShimmer()
         listen()
         i.getStringExtra("speak")?.let {
             if (it.isNotBlank()) exec.execute { Speaker.speak(applicationContext, it) }
@@ -276,16 +316,19 @@ class Screen : Activity() {
 
     override fun onPause() {
         Speaker.stop()
+        shimmerView.stopShimmer()
         super.onPause()
     }
 
     override fun onStop() {
         Speaker.stop()
+        shimmerView.stopShimmer()
         super.onStop()
     }
 
     override fun onDestroy() {
         Speaker.stop()
+        shimmerView.stopShimmer()
         super.onDestroy()
     }
 
@@ -1144,6 +1187,8 @@ class Screen : Activity() {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
         ui {
+            shimmerView.setThinking(false)
+            shimmerView.stopShimmer()
             topBar.visibility = View.VISIBLE
             responseCard.visibility = View.VISIBLE
             contextRow.visibility = View.GONE
@@ -1176,7 +1221,9 @@ class Screen : Activity() {
 
                 val pcm = Recorder.capture(
                     maxSec = 15,
-                    onRmsUpdate = { _ -> },
+                    onRmsUpdate = { rms ->
+                        shimmerView.setAudioLevel(rms)
+                    },
                     onSpeechDetected = {
                         ui {
                             setMicActive(true)
@@ -1215,6 +1262,7 @@ class Screen : Activity() {
             } finally {
                 busy = false
                 ui {
+                    shimmerView.setThinking(false)
                     setMicActive(false)
                     if (!Speaker.isSpeaking) {
                         setPillStatus(null)
@@ -1231,6 +1279,7 @@ class Screen : Activity() {
             contextRow.visibility = View.GONE
             responseTextView.text = prompt
             setPillStatus("Thinking…")
+            shimmerView.setThinking(true)
         }
 
         exec.execute {
@@ -1354,6 +1403,7 @@ class Screen : Activity() {
             } finally {
                 busy = false
                 ui {
+                    shimmerView.setThinking(false)
                     setMicActive(false)
                     if (!Speaker.isSpeaking) {
                         setPillStatus(null)

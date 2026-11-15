@@ -10,11 +10,25 @@ class Sessions : VoiceInteractionSessionService() {
     override fun onNewSession(args: Bundle?): VoiceInteractionSession = Session(this)
 }
 
-// Wake gesture lands here: open Theia's screen and start listening.
+/**
+ * Wake gesture and power button handler.
+ * setUiEnabled(false) suppresses the default framework session window,
+ * preventing any blank white box or starting border from flashing on screen.
+ */
 class Session(ctx: Context) : VoiceInteractionSession(ctx) {
+
+    override fun onCreate() {
+        super.onCreate()
+        setUiEnabled(false)
+    }
+
     override fun onShow(args: Bundle?, showFlags: Int) {
         super.onShow(args, showFlags)
-        startAssistantActivity(Intent(context, Screen::class.java).putExtra("autolisten", true))
+        val intent = Intent(context, Screen::class.java).apply {
+            putExtra("autolisten", true)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        }
+        startAssistantActivity(intent)
         hide()
     }
 }
