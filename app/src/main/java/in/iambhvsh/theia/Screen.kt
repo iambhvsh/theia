@@ -57,7 +57,6 @@ class Screen : Activity() {
     private lateinit var visualizer: Visualizer
     private lateinit var keyboardBtn: ImageButton
     private lateinit var micBtn: ImageButton
-    private lateinit var stopBtn: ImageButton
     private lateinit var plateInputBar: LinearLayout
     private lateinit var plateInputField: EditText
     private lateinit var plateSendBtn: ImageButton
@@ -233,10 +232,9 @@ class Screen : Activity() {
 
         setContentView(rootLayout)
 
-        // Connect speaking listener to update visualizer & show Stop button
+        // Connect speaking listener to update visualizer
         Speaker.onSpeakingStateChanged = { speaking ->
             ui {
-                stopBtn.visibility = if (speaking) View.VISIBLE else View.GONE
                 if (speaking) {
                     visualizer.mode = Visualizer.Mode.SPEAKING
                     statusText.text = "Speaking…"
@@ -424,29 +422,12 @@ class Screen : Activity() {
             }
             layoutParams = mlp
             setOnClickListener {
-                if (!busy) listen()
-            }
-        }
-
-        // Stop Button (Right - visible only when speaking)
-        stopBtn = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_stop)
-            setColorFilter(Color.WHITE)
-            visibility = View.GONE
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(0xFFEA4335.toInt()) // Google Red
-            }
-            val slp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt()).apply {
-                marginStart = (6 * density).toInt()
-            }
-            layoutParams = slp
-            setOnClickListener {
-                Speaker.stop()
-                ui {
-                    visibility = View.GONE
+                if (Speaker.isSpeaking) {
+                    Speaker.stop()
                     visualizer.mode = Visualizer.Mode.IDLE
                     statusText.visibility = View.GONE
+                } else if (!busy) {
+                    listen()
                 }
             }
         }
@@ -454,7 +435,6 @@ class Screen : Activity() {
         voiceRow.addView(keyboardBtn)
         voiceRow.addView(visualizer)
         voiceRow.addView(micBtn)
-        voiceRow.addView(stopBtn)
 
         // Text Input Bar (Revealed when tapping keyboard)
         plateInputBar = LinearLayout(this).apply {
