@@ -12,7 +12,9 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.Bundle
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.text.method.PasswordTransformationMethod
 import android.view.Gravity
 import android.view.View
@@ -33,15 +35,15 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 /**
- * Theia: Google Assistant-grade Bottom Sheet UI.
+ * Theia: Google Gemini UI Architecture.
  *
- * Reengineered to match the authentic Google Assistant experience:
- * - Native Material vector drawables for all actions (keyboard, mic, settings, close, send, stop)
- * - Authentic 4-color soundwave visualizer (Blue, Red, Yellow, Green)
- * - Minimalist, floating bottom voice plate
- * - Dual voice and text typing workflow
- * - "Hi, how can I help?" greeting with clean Material suggestion chips
- * - Conversational cards and expandable Settings page
+ * Reengineered directly from Google Gemini (`com.google.android.apps.bard`):
+ * - Gemini Sparkle logo (#3084FF Electric Blue)
+ * - Gemini Live dynamic audio waveform visualizer (undulating gradient bars)
+ * - Unified Gemini floating input plate (inline text typing + Mic + Live visualizer)
+ * - Material You surface styling (#F0F4F9, #E9EEF6, #D3E3FD)
+ * - Modern Gemini greeting & suggestion pills
+ * - Expandable Settings page
  */
 class Screen : Activity() {
     private val exec = Executors.newSingleThreadExecutor()
@@ -52,14 +54,13 @@ class Screen : Activity() {
     private lateinit var sheetContainer: LinearLayout
     private lateinit var settingsPage: ScrollView
 
-    // Google Assistant Bottom Plate Elements
-    private lateinit var bottomPlate: LinearLayout
-    private lateinit var visualizer: Visualizer
-    private lateinit var keyboardBtn: ImageButton
+    // Gemini Unified Bottom Plate Elements
+    private lateinit var geminiInputPlate: LinearLayout
+    private lateinit var promptInput: EditText
     private lateinit var micBtn: ImageButton
-    private lateinit var plateInputBar: LinearLayout
-    private lateinit var plateInputField: EditText
-    private lateinit var plateSendBtn: ImageButton
+    private lateinit var sendBtn: ImageButton
+    private lateinit var visualizerContainer: FrameLayout
+    private lateinit var visualizer: Visualizer
 
     // Conversation Surface
     private lateinit var conversationScroll: ScrollView
@@ -85,7 +86,7 @@ class Screen : Activity() {
             )
         }
 
-        // 1. Dismissable Semi-Transparent Scrim
+        // 1. Semi-Transparent Scrim (tapping outside dismisses bottom sheet)
         backdropView = View(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -96,7 +97,7 @@ class Screen : Activity() {
         }
         rootLayout.addView(backdropView)
 
-        // 2. Google Assistant Bottom Sheet
+        // 2. Google Gemini Bottom Sheet Container
         sheetContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             val lp = FrameLayout.LayoutParams(
@@ -107,57 +108,59 @@ class Screen : Activity() {
             layoutParams = lp
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(Color.WHITE)
+                setColor(0xFFF0F4F9.toInt()) // Gemini signature surface tone
                 val r = 28f * density
                 cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
             }
             elevation = 16f * density
             setPadding(pad, (10 * density).toInt(), pad, (16 * density).toInt())
-            setOnClickListener {} // Prevent touch passthrough
+            setOnClickListener {} // Prevent touch pass-through to backdrop
         }
 
-        // Top Drag Handle (36dp x 4dp centered rounded bar)
+        // Gemini Drag Handle (36dp x 4dp centered rounded bar)
         val handleBar = View(this).apply {
             val hlp = LinearLayout.LayoutParams((36 * density).toInt(), (4 * density).toInt()).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
-                bottomMargin = (10 * density).toInt()
+                bottomMargin = (12 * density).toInt()
             }
             layoutParams = hlp
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(0xFFDADCE0.toInt())
+                setColor(0xFFC4C7C5.toInt())
                 cornerRadius = 2f * density
             }
         }
         sheetContainer.addView(handleBar)
 
-        // Top Header: Sparkle Logo + "Theia" + Settings & Close Vector Buttons
+        // Top Header Bar: Gemini Sparkle Logo + "Theia" + Settings & Close Vector Buttons
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, 0, 0, (6 * density).toInt())
         }
 
-        val sparkleLogo = ImageView(this).apply {
+        val geminiSparkle = ImageView(this).apply {
             setImageResource(R.drawable.ic_sparkle)
-            val slp = LinearLayout.LayoutParams((22 * density).toInt(), (22 * density).toInt()).apply {
+            setColorFilter(0xFF3084FF.toInt()) // Gemini Electric Blue
+            val slp = LinearLayout.LayoutParams((24 * density).toInt(), (24 * density).toInt()).apply {
                 marginEnd = (8 * density).toInt()
             }
             layoutParams = slp
         }
+
         val appTitle = TextView(this).apply {
             text = "Theia"
-            textSize = 17f
-            setTextColor(0xFF3C4043.toInt())
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            textSize = 18f
+            setTextColor(0xFF1F1F1F.toInt())
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         val settingsBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_settings)
-            setColorFilter(0xFF5F6368.toInt())
+            setColorFilter(0xFF444746.toInt())
             background = createCircularRipple(density)
-            val lp = LinearLayout.LayoutParams((36 * density).toInt(), (36 * density).toInt()).apply {
+            val lp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt()).apply {
                 marginEnd = (4 * density).toInt()
             }
             layoutParams = lp
@@ -166,14 +169,14 @@ class Screen : Activity() {
 
         val closeBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_close)
-            setColorFilter(0xFF5F6368.toInt())
+            setColorFilter(0xFF444746.toInt())
             background = createCircularRipple(density)
-            val lp = LinearLayout.LayoutParams((36 * density).toInt(), (36 * density).toInt())
+            val lp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt())
             layoutParams = lp
             setOnClickListener { finish() }
         }
 
-        topBar.addView(sparkleLogo)
+        topBar.addView(geminiSparkle)
         topBar.addView(appTitle)
         topBar.addView(settingsBtn)
         topBar.addView(closeBtn)
@@ -185,14 +188,14 @@ class Screen : Activity() {
             setPadding(0, (4 * density).toInt(), 0, (6 * density).toInt())
         }
 
-        // Greeting View ("Hi, how can I help?" + Material suggestion chips)
+        // Gemini Greeting ("Hi, how can I help you today?" + Gemini prompt pills)
         greetingView = buildGreetingView(density)
         conversationContainer.addView(greetingView)
 
         // Live transcription view (large, elegant Google Sans text)
         transcriptionText = TextView(this).apply {
             textSize = 21f
-            setTextColor(0xFF202124.toInt())
+            setTextColor(0xFF1F1F1F.toInt())
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             setPadding(0, (6 * density).toInt(), 0, (8 * density).toInt())
             visibility = View.GONE
@@ -202,7 +205,7 @@ class Screen : Activity() {
         // Subtle status indicator
         statusText = TextView(this).apply {
             textSize = 13f
-            setTextColor(0xFF70757A.toInt())
+            setTextColor(0xFF72777A.toInt())
             setPadding(0, (2 * density).toInt(), 0, (4 * density).toInt())
             visibility = View.GONE
         }
@@ -211,7 +214,7 @@ class Screen : Activity() {
         conversationScroll = ScrollView(this).apply {
             val clp = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                (210 * density).toInt()
+                (220 * density).toInt()
             )
             layoutParams = clp
             isFillViewport = true
@@ -220,9 +223,9 @@ class Screen : Activity() {
         }
         sheetContainer.addView(conversationScroll)
 
-        // Google Assistant Floating Bottom Plate (Voice Visualizer & Controls)
-        bottomPlate = buildBottomPlate(density)
-        sheetContainer.addView(bottomPlate)
+        // Google Gemini Unified Floating Input Plate
+        geminiInputPlate = buildGeminiInputPlate(density)
+        sheetContainer.addView(geminiInputPlate)
 
         rootLayout.addView(sheetContainer)
 
@@ -232,12 +235,12 @@ class Screen : Activity() {
 
         setContentView(rootLayout)
 
-        // Connect speaking listener to update visualizer
+        // Connect speaking listener to update visualizer state
         Speaker.onSpeakingStateChanged = { speaking ->
             ui {
                 if (speaking) {
                     visualizer.mode = Visualizer.Mode.SPEAKING
-                    statusText.text = "Speaking…"
+                    statusText.text = "Theia is speaking…"
                     statusText.visibility = View.VISIBLE
                 } else if (!busy) {
                     visualizer.mode = Visualizer.Mode.IDLE
@@ -257,7 +260,7 @@ class Screen : Activity() {
             }
         }
 
-        // Automatic listen on launch like Google Assistant
+        // Automatic listen on launch like Gemini
         window.decorView.post {
             listen()
         }
@@ -283,9 +286,9 @@ class Screen : Activity() {
         }
         val bg = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(0xFFF1F3F4.toInt())
+            setColor(0xFFE9EEF6.toInt())
         }
-        return RippleDrawable(ColorStateList.valueOf(0x33000000), bg, mask)
+        return RippleDrawable(ColorStateList.valueOf(0x22000000), bg, mask)
     }
 
     private fun buildGreetingView(density: Float): LinearLayout {
@@ -295,14 +298,14 @@ class Screen : Activity() {
         }
 
         val greetingTitle = TextView(this).apply {
-            text = "Hi, how can I help?"
-            textSize = 24f
-            setTextColor(0xFF202124.toInt())
+            text = "Hi, how can I help you today?"
+            textSize = 23f
+            setTextColor(0xFF1F1F1F.toInt())
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
         }
         layout.addView(greetingTitle)
 
-        // Suggestion Chips (Google Assistant Style)
+        // Suggestion Pills (Gemini Style)
         val chipsScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             val slp = LinearLayout.LayoutParams(
@@ -318,10 +321,10 @@ class Screen : Activity() {
         }
 
         val suggestions = listOf(
-            "Search files",
-            "Set an alarm",
+            "Search my files",
+            "Set a timer",
             "What can you do?",
-            "Battery status"
+            "Check battery status"
         )
 
         for (item in suggestions) {
@@ -329,13 +332,13 @@ class Screen : Activity() {
                 text = item
                 textSize = 13.5f
                 isAllCaps = false
-                setTextColor(0xFF3C4043.toInt())
+                setTextColor(0xFF444746.toInt())
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
-                    setColor(0xFFF8F9FA.toInt())
+                    setColor(0xFFE9EEF6.toInt()) // Gemini pill background
                     cornerRadius = 18f * density
-                    setStroke((1 * density).toInt(), 0xFFDADCE0.toInt())
+                    setStroke((1 * density).toInt(), 0xFFE0E3E7.toInt())
                 }
                 val blp = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -356,70 +359,64 @@ class Screen : Activity() {
         return layout
     }
 
-    private fun buildBottomPlate(density: Float): LinearLayout {
+    /**
+     * Builds Google Gemini's unified bottom plate:
+     * Inline text input field + Mic button + Gemini Live visualizer button + Send button.
+     */
+    private fun buildGeminiInputPlate(density: Float): LinearLayout {
         val plate = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            val lp = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = (6 * density).toInt()
-            }
-            layoutParams = lp
-        }
-
-        // Voice Controls Row (Keyboard Icon on Left, 4-Dots Visualizer in Center, Mic & Stop on Right)
-        val voiceRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            val rlp = LinearLayout.LayoutParams(
+            val lp = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                (56 * density).toInt()
-            )
-            layoutParams = rlp
+                (58 * density).toInt()
+            ).apply {
+                topMargin = (8 * density).toInt()
+            }
+            layoutParams = lp
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(0xFFF8F9FA.toInt())
-                cornerRadius = 28f * density
-                setStroke((1 * density).toInt(), 0xFFE8EAED.toInt())
+                setColor(Color.WHITE)
+                cornerRadius = 29f * density
+                setStroke((1.2f * density).toInt(), 0xFFE0E3E7.toInt())
             }
-            setPadding((8 * density).toInt(), 0, (8 * density).toInt(), 0)
+            elevation = 4f * density
+            setPadding((16 * density).toInt(), 0, (8 * density).toInt(), 0)
         }
 
-        // Keyboard Icon Button (Left)
-        keyboardBtn = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_keyboard)
-            setColorFilter(0xFF5F6368.toInt())
-            background = createCircularRipple(density)
-            val klp = LinearLayout.LayoutParams((40 * density).toInt(), (40 * density).toInt())
-            layoutParams = klp
-            setOnClickListener { toggleTextMode(true) }
-        }
-
-        // Center: Animated 4-Color Dots Visualizer
-        visualizer = Visualizer(this).apply {
-            val vlp = LinearLayout.LayoutParams(0, (40 * density).toInt(), 1f).apply {
-                gravity = Gravity.CENTER
+        // Inline Text Input Field ("Ask Theia...")
+        promptInput = EditText(this).apply {
+            hint = "Ask Theia…"
+            textSize = 15.5f
+            setTextColor(0xFF1F1F1F.toInt())
+            setHintTextColor(0xFF72777A.toInt())
+            background = null
+            imeOptions = EditorInfo.IME_ACTION_SEND
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_SEND) {
+                    submitPrompt()
+                    true
+                } else false
             }
-            layoutParams = vlp
-            setOnClickListener {
-                if (Speaker.isSpeaking) {
-                    Speaker.stop()
-                    visualizer.mode = Visualizer.Mode.IDLE
-                } else if (!busy) {
-                    listen()
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    val hasText = !s.isNullOrBlank()
+                    sendBtn.visibility = if (hasText) View.VISIBLE else View.GONE
+                    micBtn.visibility = if (hasText) View.GONE else View.VISIBLE
                 }
-            }
+                override fun afterTextChanged(s: Editable?) {}
+            })
         }
 
-        // Mic Button (Right)
+        // Mic Button (Tap to talk)
         micBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_mic)
-            setColorFilter(0xFF4285F4.toInt()) // Google Blue
+            setColorFilter(0xFF3084FF.toInt()) // Gemini Electric Blue
             background = createCircularRipple(density)
-            val mlp = LinearLayout.LayoutParams((40 * density).toInt(), (40 * density).toInt()).apply {
-                marginStart = (4 * density).toInt()
-            }
+            val mlp = LinearLayout.LayoutParams((40 * density).toInt(), (40 * density).toInt())
             layoutParams = mlp
             setOnClickListener {
                 if (Speaker.isSpeaking) {
@@ -432,101 +429,65 @@ class Screen : Activity() {
             }
         }
 
-        voiceRow.addView(keyboardBtn)
-        voiceRow.addView(visualizer)
-        voiceRow.addView(micBtn)
-
-        // Text Input Bar (Revealed when tapping keyboard)
-        plateInputBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+        // Send Button (Visible when typing text)
+        sendBtn = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_send)
+            setColorFilter(Color.WHITE)
             visibility = View.GONE
-            val ilp = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                (56 * density).toInt()
-            )
-            layoutParams = ilp
             background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                setColor(0xFFF1F3F4.toInt())
-                cornerRadius = 28f * density
-                setStroke((1 * density).toInt(), 0xFFDADCE0.toInt())
+                shape = GradientDrawable.OVAL
+                setColor(0xFF3084FF.toInt()) // Gemini Electric Blue
             }
-            setPadding((16 * density).toInt(), 0, (6 * density).toInt(), 0)
-
-            plateInputField = EditText(this@Screen).apply {
-                hint = "Ask anything…"
-                textSize = 15f
-                setTextColor(0xFF202124.toInt())
-                setHintTextColor(0xFF80868B.toInt())
-                background = null
-                imeOptions = EditorInfo.IME_ACTION_SEND
-                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                setOnEditorActionListener { _, actionId, _ ->
-                    if (actionId == EditorInfo.IME_ACTION_SEND) {
-                        submitTypedQuery()
-                        true
-                    } else false
-                }
-            }
-
-            // Switch back to voice button
-            val backToVoiceBtn = ImageButton(this@Screen).apply {
-                setImageResource(R.drawable.ic_mic)
-                setColorFilter(0xFF5F6368.toInt())
-                background = createCircularRipple(density)
-                val blp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt())
-                layoutParams = blp
-                setOnClickListener { toggleTextMode(false) }
-            }
-
-            plateSendBtn = ImageButton(this@Screen).apply {
-                setImageResource(R.drawable.ic_send)
-                setColorFilter(Color.WHITE)
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(0xFF1A73E8.toInt()) // Google Blue
-                }
-                val slp = LinearLayout.LayoutParams((40 * density).toInt(), (40 * density).toInt()).apply {
-                    marginStart = (6 * density).toInt()
-                }
-                layoutParams = slp
-                setOnClickListener { submitTypedQuery() }
-            }
-
-            addView(plateInputField)
-            addView(backToVoiceBtn)
-            addView(plateSendBtn)
+            val slp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt())
+            layoutParams = slp
+            setOnClickListener { submitPrompt() }
         }
 
-        plate.addView(voiceRow)
-        plate.addView(plateInputBar)
+        // Gemini Live Waveform Visualizer Button (Right)
+        visualizerContainer = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(0xFFE9EEF6.toInt()) // Gemini soft circle
+            }
+            val vlp = LinearLayout.LayoutParams((42 * density).toInt(), (42 * density).toInt()).apply {
+                marginStart = (6 * density).toInt()
+            }
+            layoutParams = vlp
+
+            visualizer = Visualizer(this@Screen).apply {
+                val flp = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                layoutParams = flp
+            }
+            addView(visualizer)
+
+            setOnClickListener {
+                if (Speaker.isSpeaking) {
+                    Speaker.stop()
+                    visualizer.mode = Visualizer.Mode.IDLE
+                    statusText.visibility = View.GONE
+                } else if (!busy) {
+                    listen()
+                }
+            }
+        }
+
+        plate.addView(promptInput)
+        plate.addView(micBtn)
+        plate.addView(sendBtn)
+        plate.addView(visualizerContainer)
 
         return plate
     }
 
-    private fun toggleTextMode(enableText: Boolean) {
-        val voiceRow = bottomPlate.getChildAt(0)
-        if (enableText) {
-            voiceRow.visibility = View.GONE
-            plateInputBar.visibility = View.VISIBLE
-            plateInputField.requestFocus()
-            val imm = getSystemService(InputMethodManager::class.java)
-            imm?.showSoftInput(plateInputField, InputMethodManager.SHOW_IMPLICIT)
-        } else {
-            plateInputBar.visibility = View.GONE
-            voiceRow.visibility = View.VISIBLE
-            val imm = getSystemService(InputMethodManager::class.java)
-            imm?.hideSoftInputFromWindow(plateInputField.windowToken, 0)
-        }
-    }
-
-    private fun submitTypedQuery() {
-        val q = plateInputField.text.toString().trim()
+    private fun submitPrompt() {
+        val q = promptInput.text.toString().trim()
         if (q.isNotEmpty()) {
-            plateInputField.setText("")
-            toggleTextMode(false)
+            promptInput.setText("")
+            val imm = getSystemService(InputMethodManager::class.java)
+            imm?.hideSoftInputFromWindow(promptInput.windowToken, 0)
             processQuery(q)
         }
     }
@@ -557,32 +518,47 @@ class Screen : Activity() {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = 18f * density
                 if (isUser) {
-                    setColor(0xFFE8F0FE.toInt()) // Google soft blue
-                    setStroke((1 * density).toInt(), 0xFFD2E3FC.toInt())
+                    setColor(0xFFD3E3FD.toInt()) // Gemini user bubble tint
+                    setStroke((1 * density).toInt(), 0xFFC2E7FF.toInt())
                 } else {
-                    setColor(0xFFF8F9FA.toInt())
-                    setStroke((1 * density).toInt(), 0xFFE8EAED.toInt())
+                    setColor(Color.WHITE)
+                    setStroke((1 * density).toInt(), 0xFFE0E3E7.toInt())
                 }
             }
+            elevation = if (isUser) 0f else 2f * density
             setPadding((16 * density).toInt(), (12 * density).toInt(), (16 * density).toInt(), (12 * density).toInt())
 
             val content = TextView(this@Screen).apply {
                 this.text = text
                 textSize = 16f
-                setTextColor(0xFF202124.toInt())
+                setTextColor(0xFF1F1F1F.toInt())
                 setLineSpacing(0f, 1.25f)
                 typeface = Typeface.create("sans-serif", Typeface.NORMAL)
             }
             addView(content)
 
             if (!isUser) {
-                val badge = TextView(this@Screen).apply {
-                    val p = Speaker.getPreset(this@Screen)
-                    this.text = "${p.label} • Theia"
-                    textSize = 11.5f
-                    setTextColor(0xFF70757A.toInt())
+                val badge = LinearLayout(this@Screen).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
                     setPadding(0, (6 * density).toInt(), 0, 0)
                 }
+                val spark = ImageView(this@Screen).apply {
+                    setImageResource(R.drawable.ic_sparkle)
+                    setColorFilter(0xFF3084FF.toInt())
+                    val slp = LinearLayout.LayoutParams((14 * density).toInt(), (14 * density).toInt()).apply {
+                        marginEnd = (4 * density).toInt()
+                    }
+                    layoutParams = slp
+                }
+                val label = TextView(this@Screen).apply {
+                    val p = Speaker.getPreset(this@Screen)
+                    this.text = "${p.label} • Gemini"
+                    textSize = 11.5f
+                    setTextColor(0xFF72777A.toInt())
+                }
+                badge.addView(spark)
+                badge.addView(label)
                 addView(badge)
             }
         }
@@ -638,7 +614,7 @@ class Screen : Activity() {
 
         val backBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_arrow_back)
-            setColorFilter(0xFF202124.toInt())
+            setColorFilter(0xFF1F1F1F.toInt())
             background = createCircularRipple(density)
             val lp = LinearLayout.LayoutParams((40 * density).toInt(), (40 * density).toInt())
             layoutParams = lp
@@ -649,7 +625,7 @@ class Screen : Activity() {
             text = "Settings"
             textSize = 22f
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
-            setTextColor(0xFF202124.toInt())
+            setTextColor(0xFF1F1F1F.toInt())
             setPadding((12 * density).toInt(), 0, 0, 0)
         }
         header.addView(backBtn)
@@ -661,7 +637,7 @@ class Screen : Activity() {
             text = "Groq API Key"
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(0xFF3C4043.toInt())
+            setTextColor(0xFF444746.toInt())
             setPadding(0, (8 * density).toInt(), 0, (4 * density).toInt())
         })
 
@@ -670,7 +646,7 @@ class Screen : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(0xFFF1F3F4.toInt())
+                setColor(0xFFF0F4F9.toInt())
                 cornerRadius = 12f * density
             }
             setPadding((12 * density).toInt(), 0, (4 * density).toInt(), 0)
@@ -683,14 +659,14 @@ class Screen : Activity() {
             setText(Groq.getApiKey(this@Screen))
             background = null
             textSize = 15f
-            setTextColor(0xFF202124.toInt())
+            setTextColor(0xFF1F1F1F.toInt())
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         var isKeyVisible = false
         val toggleKeyBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_visibility)
-            setColorFilter(0xFF5F6368.toInt())
+            setColorFilter(0xFF72777A.toInt())
             background = createCircularRipple(density)
             val tlp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt())
             layoutParams = tlp
@@ -715,16 +691,16 @@ class Screen : Activity() {
             text = "Real-time Model"
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(0xFF3C4043.toInt())
+            setTextColor(0xFF444746.toInt())
             setPadding(0, (16 * density).toInt(), 0, (4 * density).toInt())
         })
         val modelInput = EditText(this).apply {
             setText(Groq.getModel(this@Screen))
             textSize = 15f
-            setTextColor(0xFF202124.toInt())
+            setTextColor(0xFF1F1F1F.toInt())
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(0xFFF1F3F4.toInt())
+                setColor(0xFFF0F4F9.toInt())
                 cornerRadius = 12f * density
             }
             setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
@@ -733,10 +709,10 @@ class Screen : Activity() {
 
         // Assistant Voice Selector
         layout.addView(TextView(this).apply {
-            text = "Assistant Voice"
+            text = "Voice"
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(0xFF3C4043.toInt())
+            setTextColor(0xFF444746.toInt())
             setPadding(0, (16 * density).toInt(), 0, (4 * density).toInt())
         })
 
@@ -747,12 +723,12 @@ class Screen : Activity() {
             text = "Voice: ${currentPreset.label}"
             isAllCaps = false
             textSize = 15f
-            setTextColor(0xFF202124.toInt())
+            setTextColor(0xFF1F1F1F.toInt())
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(0xFFF1F3F4.toInt())
+                setColor(0xFFF0F4F9.toInt())
                 cornerRadius = 12f * density
-                setStroke((1 * density).toInt(), 0xFFDADCE0.toInt())
+                setStroke((1 * density).toInt(), 0xFFE0E3E7.toInt())
             }
             setPadding((14 * density).toInt(), (10 * density).toInt(), (14 * density).toInt(), (10 * density).toInt())
             setOnClickListener {
@@ -777,7 +753,7 @@ class Screen : Activity() {
             text = "Preview Voice"
             isAllCaps = false
             textSize = 14f
-            setTextColor(0xFF1A73E8.toInt())
+            setTextColor(0xFF3084FF.toInt())
             background = null
             setOnClickListener {
                 exec.execute {
@@ -792,17 +768,17 @@ class Screen : Activity() {
             text = "Conversation Memory"
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(0xFF3C4043.toInt())
+            setTextColor(0xFF444746.toInt())
             setPadding(0, (16 * density).toInt(), 0, (4 * density).toInt())
         })
         val clearHistoryBtn = Button(this).apply {
             text = "Clear History"
             isAllCaps = false
             textSize = 14f
-            setTextColor(0xFFD93025.toInt()) // Material Red
+            setTextColor(0xFFD93025.toInt())
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(0xFFFCE8E6.toInt()) // Soft red tint
+                setColor(0xFFFCE8E6.toInt())
                 cornerRadius = 12f * density
             }
             setOnClickListener {
@@ -823,7 +799,7 @@ class Screen : Activity() {
             typeface = Typeface.DEFAULT_BOLD
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(0xFF1A73E8.toInt()) // Google Blue
+                setColor(0xFF3084FF.toInt()) // Gemini Electric Blue
                 cornerRadius = 24f * density
             }
             val slp = LinearLayout.LayoutParams(
@@ -895,7 +871,7 @@ class Screen : Activity() {
             greetingView.visibility = View.GONE
             transcriptionText.visibility = View.VISIBLE
             transcriptionText.text = "Listening…"
-            transcriptionText.setTextColor(0xFF5F6368.toInt())
+            transcriptionText.setTextColor(0xFF72777A.toInt())
             visualizer.mode = Visualizer.Mode.LISTENING
             showStatus("Listening…")
         }
@@ -925,8 +901,8 @@ class Screen : Activity() {
 
                 ui {
                     visualizer.mode = Visualizer.Mode.THINKING
-                    transcriptionText.text = "Transcribing…"
-                    showStatus("Transcribing…")
+                    transcriptionText.text = "Thinking…"
+                    showStatus("Thinking…")
                 }
 
                 val rawTranscribe = Engine.transcribe(pcm)
@@ -941,7 +917,7 @@ class Screen : Activity() {
 
                 ui {
                     transcriptionText.text = text
-                    transcriptionText.setTextColor(0xFF202124.toInt())
+                    transcriptionText.setTextColor(0xFF1F1F1F.toInt())
                 }
 
                 val prompt = cleanTranscript(text).ifEmpty { text }
@@ -1116,12 +1092,12 @@ class Screen : Activity() {
                     text = "${f.name}\n${f.parent}"
                     textSize = 13.5f
                     isAllCaps = false
-                    setTextColor(0xFF1F2937.toInt())
+                    setTextColor(0xFF1F1F1F.toInt())
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.RECTANGLE
-                        setColor(0xFFF1F3F4.toInt())
+                        setColor(Color.WHITE)
                         cornerRadius = 14f * density
-                        setStroke((1 * density).toInt(), 0xFFE5E7EB.toInt())
+                        setStroke((1 * density).toInt(), 0xFFE0E3E7.toInt())
                     }
                     val flp = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
