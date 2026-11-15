@@ -27,11 +27,11 @@ object Speaker {
     private const val KEY_PRESET = "voice_preset_id"
 
     val PRESETS = listOf(
-        VoiceItem("emma", "Emma (US Female • Smooth) 🌟", "en-us-x-iog-network", requiresInternet = true),
-        VoiceItem("ava", "Ava (US Female • Warm)", "en-us-x-sfg-network", requiresInternet = true),
-        VoiceItem("liam", "Liam (US Male • Crisp)", "en-us-x-tpd-network", requiresInternet = true),
-        VoiceItem("oliver", "Oliver (UK Male • British)", "en-gb-x-rjs-network", requiresInternet = true),
-        VoiceItem("chloe_offline", "Chloe (Offline • 0% Data)", "en-us-x-sfg-local", requiresInternet = false)
+        VoiceItem("emma", "Emma", "en-us-x-iog-network", requiresInternet = true),
+        VoiceItem("ava", "Ava", "en-us-x-sfg-network", requiresInternet = true),
+        VoiceItem("liam", "Liam", "en-us-x-tpd-network", requiresInternet = true),
+        VoiceItem("oliver", "Oliver", "en-gb-x-rjs-network", requiresInternet = true),
+        VoiceItem("chloe", "Chloe", "en-us-x-sfg-local", requiresInternet = false)
     )
 
     private var tts: TextToSpeech? = null
@@ -47,7 +47,7 @@ object Speaker {
             "ava", "female_warm" -> "ava"
             "liam", "male_warm", "male_deep", "noah", "lucas", "sophia" -> "liam"
             "oliver", "female_british" -> "oliver"
-            "chloe_offline", "offline_female", "leo_offline" -> "chloe_offline"
+            "chloe", "chloe_offline", "offline_female", "leo_offline" -> "chloe"
             else -> "emma"
         }
         return PRESETS.firstOrNull { it.id == mappedId } ?: PRESETS[0]
