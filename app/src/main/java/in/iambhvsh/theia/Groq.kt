@@ -33,7 +33,9 @@ object Groq {
             ?: prefs.getString("groq_api_key", null)?.trim()
         if (!saved.isNullOrEmpty()) return saved
         return try {
-            BuildConfig.GROQ_API_KEY.trim()
+            val clazz = Class.forName("in.iambhvsh.theia.BuildConfig")
+            val field = clazz.getField("GROQ_API_KEY")
+            (field.get(null) as? String)?.trim() ?: ""
         } catch (_: Throwable) {
             ""
         }
@@ -178,28 +180,28 @@ object Groq {
         messages.put(sysMsg)
 
         // Append historical context from database
-        for (m in history) {
+        for ((_, _, role, content, toolCallsJson, toolCallId) in history) {
             val msgObj = JSONObject()
-            msgObj.put("role", m.role)
-            when (m.role) {
+            msgObj.put("role", role)
+            when (role) {
                 "user" -> {
-                    msgObj.put("content", m.content ?: "")
+                    msgObj.put("content", content ?: "")
                     messages.put(msgObj)
                 }
                 "assistant" -> {
-                    if (!m.toolCallsJson.isNullOrBlank()) {
+                    if (!toolCallsJson.isNullOrBlank()) {
                         msgObj.put("content", JSONObject.NULL)
-                        msgObj.put("tool_calls", JSONArray(m.toolCallsJson))
+                        msgObj.put("tool_calls", JSONArray(toolCallsJson))
                     } else {
-                        msgObj.put("content", m.content ?: "")
+                        msgObj.put("content", content ?: "")
                     }
                     messages.put(msgObj)
                 }
                 "tool" -> {
-                    val tid = m.toolCallId ?: ""
+                    val tid = toolCallId ?: ""
                     if (tid.isNotEmpty()) {
                         msgObj.put("tool_call_id", tid)
-                        msgObj.put("content", m.content ?: "")
+                        msgObj.put("content", content ?: "")
                         messages.put(msgObj)
                     }
                 }

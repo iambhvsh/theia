@@ -234,11 +234,8 @@ class Screen : Activity() {
             ui {
                 if (speaking) {
                     setPillStatus("Theia is speaking…")
-                    statusTextView.text = "Theia is speaking…"
-                    statusTextView.visibility = View.VISIBLE
                     volumeBtn.setColorFilter(0xFF3084FF.toInt())
                 } else {
-                    statusTextView.visibility = View.GONE
                     volumeBtn.setColorFilter(0xFFC4C7C5.toInt())
                     if (!busy) {
                         setPillStatus(null)
@@ -816,8 +813,17 @@ class Screen : Activity() {
     }
 
     private fun showStatus(text: String) {
-        statusTextView.text = text
-        statusTextView.visibility = if (text.isNotBlank()) View.VISIBLE else View.GONE
+        val trimmed = text.trim()
+        if (trimmed.isEmpty() ||
+            trimmed.startsWith("Thinking", ignoreCase = true) ||
+            trimmed.startsWith("Listening", ignoreCase = true) ||
+            trimmed.startsWith("Theia is speaking", ignoreCase = true) ||
+            trimmed.startsWith("Transcribing", ignoreCase = true)) {
+            statusTextView.visibility = View.GONE
+            return
+        }
+        statusTextView.text = trimmed
+        statusTextView.visibility = View.VISIBLE
     }
 
     private fun setMicActive(active: Boolean) {
@@ -1224,7 +1230,6 @@ class Screen : Activity() {
             responseCard.visibility = View.VISIBLE
             contextRow.visibility = View.GONE
             responseTextView.text = prompt
-            showStatus("Thinking…")
             setPillStatus("Thinking…")
         }
 
