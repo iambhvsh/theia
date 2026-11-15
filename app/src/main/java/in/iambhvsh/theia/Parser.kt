@@ -4,7 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 
-data class Call(val name: String, val args: JSONObject)
+data class Call(val name: String, val args: JSONObject, val id: String? = null)
 
 object Parser {
     // Tolerant: accepts a top-level array or an object holding the calls array.

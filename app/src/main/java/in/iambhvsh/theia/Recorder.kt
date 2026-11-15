@@ -5,14 +5,17 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.util.Log
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 object Recorder {
     private const val TAG = "TheiaRecorder"
     private const val SR = 16000
     private const val DEFAULT_START_THRESH = 0.0032f // Very sensitive speech onset threshold
-    private const val END_CHUNKS = 22               // 100 ms each -> 2.2 s silence ends capture (natural pauses)
+    private const val END_CHUNKS = 6                // 100 ms each -> 600 ms silence ends capture (ultra-responsive real-time)
     private const val WAIT_CHUNKS = 70              // 7 s initial wait before giving up
     private const val PRE_ROLL_CHUNKS = 5           // Keep ~500 ms of audio before speech trigger
+    private const val TRAILING_PAD_CHUNKS = 2       // Retain ~200 ms padding at end of speech to prevent clipping
 
     /** Returns 16 kHz mono float PCM, or empty if no speech. Blocks. */
     @SuppressLint("MissingPermission")
@@ -57,10 +60,11 @@ object Recorder {
         var speechChunks = 0
         var quiet = 0
         var waited = 0
-        var ambientSum = 0.0
+        var ambientNoise = 0.0020f
         var ambientCount = 0
         var startThresh = DEFAULT_START_THRESH
-        var continueThresh = 0.0016f
+        var continueThresh = 0.0022f
+        var consecutiveSpeech = 0
 
         rec.startRecording()
         try {
@@ -78,15 +82,19 @@ object Recorder {
                     floatBuf[i] = s
                     sumSq += s * s
                 }
-                val rms = Math.sqrt(sumSq / r).toFloat()
+                val rms = sqrt(sumSq / r).toFloat()
 
-                // Baseline ambient noise over first 3 chunks (300 ms)
-                if (ambientCount < 3) {
-                    ambientSum += rms
-                    ambientCount++
-                    val avgAmbient = (ambientSum / ambientCount).toFloat()
-                    startThresh = maxOf(DEFAULT_START_THRESH, minOf(0.010f, avgAmbient * 2.0f))
-                    continueThresh = maxOf(0.0015f, minOf(0.004f, avgAmbient * 1.1f))
+                // Dynamically track ambient noise baseline before speech triggers
+                if (!started && rms < 0.008f) {
+                    if (ambientCount == 0) {
+                        ambientNoise = rms
+                        ambientCount = 1
+                    } else {
+                        ambientNoise = ambientNoise * 0.85f + rms * 0.15f
+                        ambientCount++
+                    }
+                    startThresh = maxOf(DEFAULT_START_THRESH, minOf(0.015f, ambientNoise * 2.5f))
+                    continueThresh = maxOf(0.0022f, minOf(0.008f, ambientNoise * 1.6f))
                 }
 
                 if (!started) {
@@ -103,6 +111,7 @@ object Recorder {
                         for (i in 0 until r) out.add(floatBuf[i])
                         speechChunks++
                         quiet = 0
+                        consecutiveSpeech = 1
                     } else {
                         // Store rolling pre-roll buffer
                         if (preRoll.size >= PRE_ROLL_CHUNKS) {
@@ -119,16 +128,39 @@ object Recorder {
                     // Speech has already started
                     for (i in 0 until r) out.add(floatBuf[i])
 
-                    if (rms >= continueThresh) {
-                        // Still speaking or voice energy present
+                    val isDefiniteSpeech = rms >= startThresh
+                    val isPossibleSpeech = rms >= continueThresh
+
+                    if (isDefiniteSpeech) {
                         speechChunks++
                         quiet = 0
+                        consecutiveSpeech++
+                    } else if (isPossibleSpeech) {
+                        if (quiet == 0) {
+                            // Direct continuation of active speech
+                            speechChunks++
+                            consecutiveSpeech++
+                        } else {
+                            // Energy during an existing silence pause (breath / transient ambient noise)
+                            consecutiveSpeech++
+                            if (consecutiveSpeech >= 2) {
+                                // Sustained speech resumed
+                                quiet = 0
+                                speechChunks += consecutiveSpeech
+                            } else {
+                                // Isolated non-speech transient; continue counting silence
+                                quiet++
+                            }
+                        }
                     } else {
                         // True quiet silence
-                        if (++quiet >= END_CHUNKS) {
-                            Log.d(TAG, "Speech finished after $speechChunks active chunks. Total samples=${out.size}")
-                            break
-                        }
+                        consecutiveSpeech = 0
+                        quiet++
+                    }
+
+                    if (quiet >= END_CHUNKS) {
+                        Log.d(TAG, "Speech finished after $speechChunks active chunks. Total samples=${out.size}")
+                        break
                     }
                 }
             }
@@ -142,11 +174,18 @@ object Recorder {
             return FloatArray(0)
         }
 
+        // Trim excess trailing silence
+        val excessSilenceChunks = maxOf(0, quiet - TRAILING_PAD_CHUNKS)
+        val trimSamples = excessSilenceChunks * chunk
+        val finalSize = maxOf(chunk * 2, out.size - trimSamples)
+
         // Peak normalization: scale audio to nominal speech amplitude (~0.85 peak)
-        val pcm = out.toFloatArray()
+        val pcm = FloatArray(finalSize)
         var peak = 0.0f
-        for (v in pcm) {
-            val a = Math.abs(v)
+        for (i in 0 until finalSize) {
+            val v = out[i]
+            pcm[i] = v
+            val a = abs(v)
             if (a > peak) peak = a
         }
 

@@ -1,108 +1,166 @@
 package `in`.iambhvsh.theia
 
 import android.content.Context
-import android.content.res.AssetManager
-import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioTrack
+import android.media.AudioManager
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
 import android.util.Log
-import com.k2fsa.sherpa.onnx.OfflineTts
-import com.k2fsa.sherpa.onnx.OfflineTtsConfig
-import com.k2fsa.sherpa.onnx.OfflineTtsKittenModelConfig
-import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
-import java.io.File
+import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
-// Theia's voice: Kitten TTS nano (Apache-2.0) via sherpa-onnx
+data class VoiceItem(
+    val id: String,
+    val label: String,
+    val systemVoiceName: String
+)
+
+// Theia's voice engine: High-fidelity Google Speech Services with instant latency and zero breathing artifacts.
 object Speaker {
-    private const val SID = 1  // expr-voice-2-f (female). Other female ids: 3, 5, 7
-    private const val SPEED = 1.0f
+    private const val TAG = "TheiaSpeaker"
+    private const val PREFS = "groq_prefs"
+    private const val KEY_PRESET = "voice_preset_id"
 
-    private var tts: OfflineTts? = null
-    @Volatile private var track: AudioTrack? = null
-    @Volatile private var cancelled = false
+    val PRESETS = listOf(
+        VoiceItem("female_warm", "Natural Female (Warm) 🌟", "en-us-x-sfg-network"),
+        VoiceItem("female_crisp", "Natural Female (Crisp & Bright) 🌟", "en-us-x-tpd-network"),
+        VoiceItem("female_expressive", "Natural Female (Expressive) 🌟", "en-us-x-iol-network"),
+        VoiceItem("female_british", "Natural Female (British) 🌟", "en-gb-x-rjs-network"),
+        VoiceItem("male_warm", "Natural Male (Warm) 🌟", "en-us-x-iom-network"),
+        VoiceItem("male_deep", "Natural Male (Deep) 🌟", "en-us-x-iog-network"),
+        VoiceItem("offline_female", "Offline Fast Female (No Data)", "en-us-x-sfg-local")
+    )
 
-    @Synchronized
-    fun load(ctx: Context): OfflineTts {
-        tts?.let { return it }
-        val dir = File(ctx.filesDir, "kitten")
-        if (!File(dir, "model.fp16.onnx").exists()) {
-            val tmp = File(ctx.filesDir, "kitten.tmp")
-            tmp.deleteRecursively()
-            copyAssets(ctx.assets, "kitten", tmp)
-            dir.deleteRecursively()
-            tmp.renameTo(dir)
-        }
-        val cfg = OfflineTtsConfig(
-            model = OfflineTtsModelConfig(
-                kitten = OfflineTtsKittenModelConfig(
-                    model = "$dir/model.fp16.onnx",
-                    voices = "$dir/voices.bin",
-                    tokens = "$dir/tokens.txt",
-                    dataDir = "$dir/espeak-ng-data",
-                ),
-                numThreads = 2,
-            )
-        )
-        return OfflineTts(config = cfg).also { tts = it }
+    private var tts: TextToSpeech? = null
+    @Volatile private var isReady = false
+    private val initLatch = CountDownLatch(1)
+    @Volatile private var activeLatch: CountDownLatch? = null
+
+    fun getPreset(ctx: Context): VoiceItem {
+        val id = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_PRESET, "female_warm") ?: "female_warm"
+        return PRESETS.firstOrNull { it.id == id } ?: PRESETS[0]
     }
 
-    private fun copyAssets(am: AssetManager, path: String, dst: File) {
-        val kids = am.list(path) ?: emptyArray()
-        if (kids.isEmpty()) {
-            dst.parentFile?.mkdirs()
-            am.open(path).use { i -> dst.outputStream().use { o -> i.copyTo(o) } }
-        } else {
-            dst.mkdirs()
-            kids.forEach { copyAssets(am, "$path/$it", File(dst, it)) }
+    fun setPreset(ctx: Context, presetId: String) {
+        val p = PRESETS.firstOrNull { it.id == presetId } ?: PRESETS[0]
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_PRESET, p.id)
+            .apply()
+
+        tts?.let { applyVoice(it, p.systemVoiceName) }
+    }
+
+    @Synchronized
+    fun load(ctx: Context) {
+        if (tts != null) return
+        Handler(Looper.getMainLooper()).post {
+            tts = TextToSpeech(ctx.applicationContext) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    val t = tts
+                    if (t != null) {
+                        t.language = Locale.US
+                        t.setSpeechRate(1.05f)
+                        t.setPitch(1.0f)
+                        val p = getPreset(ctx)
+                        applyVoice(t, p.systemVoiceName)
+                        isReady = true
+                        Log.d(TAG, "Google System TTS initialized successfully with preset ${p.label}")
+                    }
+                } else {
+                    Log.w(TAG, "Google System TTS init failed with status: $status")
+                }
+                initLatch.countDown()
+            }
+        }
+    }
+
+    private fun applyVoice(t: TextToSpeech, voiceName: String) {
+        val voices = try { t.voices } catch (_: Throwable) { null } ?: return
+        if (voices.isEmpty()) return
+
+        val match = voices.firstOrNull { it.name.equals(voiceName, ignoreCase = true) }
+        if (match != null) {
+            t.voice = match
+            Log.d(TAG, "Applied voice: ${match.name}")
+            return
+        }
+
+        // Fallback: match any neural English voice or local voice
+        val enVoices = voices.filter { it.locale.language.equals("en", ignoreCase = true) }
+        val fallback = enVoices.firstOrNull { it.name.contains("network", ignoreCase = true) }
+            ?: enVoices.firstOrNull()
+        if (fallback != null) {
+            t.voice = fallback
+            Log.d(TAG, "Applied fallback voice: ${fallback.name}")
         }
     }
 
     /** Blocking. Never throws: a voice failure must not break actions. */
     fun speak(ctx: Context, text: String) {
-        if (text.isBlank()) return
-        try {
-            val t = load(ctx)
-            cancelled = false
-            val audio = t.generate(text.take(400), SID, SPEED)
-            if (!cancelled) play(audio.samples, audio.sampleRate)
-        } catch (e: Throwable) {
-            Log.w("Theia", "speak failed", e)
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+
+        load(ctx)
+        if (!isReady) {
+            try {
+                initLatch.await(3, TimeUnit.SECONDS)
+            } catch (_: InterruptedException) {}
         }
+        val t = tts
+        if (t == null || !isReady) {
+            Log.w(TAG, "TTS engine not ready")
+            return
+        }
+
+        val clean = cleanText(trimmed)
+        val utteranceId = "theia_${System.currentTimeMillis()}"
+        val latch = CountDownLatch(1)
+        activeLatch = latch
+
+        t.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(id: String?) {
+                Log.d(TAG, "Playback started ($id)")
+            }
+            override fun onDone(id: String?) {
+                if (id == utteranceId) latch.countDown()
+            }
+            override fun onError(id: String?) {
+                if (id == utteranceId) latch.countDown()
+            }
+        })
+
+        val params = Bundle().apply {
+            putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
+        }
+
+        val startMs = System.currentTimeMillis()
+        val res = t.speak(clean, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+        if (res == TextToSpeech.SUCCESS) {
+            Log.d(TAG, "TTS queued in ${System.currentTimeMillis() - startMs} ms for '$clean'")
+            try {
+                latch.await(30, TimeUnit.SECONDS)
+            } catch (_: InterruptedException) {}
+        } else {
+            Log.w(TAG, "TTS speak returned error code: $res")
+        }
+    }
+
+    private fun cleanText(text: String): String {
+        return text
+            .replace(Regex("[*#_`~]"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
     }
 
     fun stop() {
-        cancelled = true
-        try { track?.stop() } catch (_: Throwable) {}
-    }
-
-    private fun play(s: FloatArray, sr: Int) {
-        val attrs = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ASSISTANT)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-            .build()
-        val fmt = AudioFormat.Builder()
-            .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
-            .setSampleRate(sr)
-            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-            .build()
-        val t = AudioTrack.Builder()
-            .setAudioAttributes(attrs)
-            .setAudioFormat(fmt)
-            .setBufferSizeInBytes(s.size * 4)
-            .setTransferMode(AudioTrack.MODE_STATIC)
-            .build()
-        track = t
-        try {
-            t.write(s, 0, s.size, AudioTrack.WRITE_BLOCKING)
-            t.play()
-            val deadline = System.currentTimeMillis() + (s.size * 1000L / sr) + 2000
-            while (!cancelled && System.currentTimeMillis() < deadline &&
-                t.playState == AudioTrack.PLAYSTATE_PLAYING && t.playbackHeadPosition < s.size) {
-                Thread.sleep(20)
-            }
-        } finally {
-            try { t.release() } catch (_: Throwable) {}
-            track = null
-        }
+        activeLatch?.countDown()
+        activeLatch = null
+        try { tts?.stop() } catch (_: Throwable) {}
     }
 }

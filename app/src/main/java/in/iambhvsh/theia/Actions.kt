@@ -57,7 +57,7 @@ class Actions(private val a: Activity) {
                 .putExtra(AlarmClock.EXTRA_MESSAGE, label)
                 .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
         )
-        return "Timer: $min min ${label}".trim()
+        return "Timer: $min min $label".trim()
     }
 
     private fun alarm(h: Int, m: Int, label: String): String {
@@ -84,7 +84,6 @@ class Actions(private val a: Activity) {
     /** Blocking; call off the UI thread. */
     fun searchFiles(query: String): List<File> {
         val tokens = query.lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
-        if (tokens.isEmpty()) return emptyList()
         val root = Environment.getExternalStorageDirectory()
         val androidDir = File(root, "Android")
         val all = ArrayList<File>()
@@ -92,10 +91,15 @@ class Actions(private val a: Activity) {
             if (f.isFile) all += f
             if (all.size > 200000) break
         }
-        var hits = all.filter { f -> val n = f.name.lowercase(); tokens.all { n.contains(it) } }
-        if (hits.isEmpty()) {
-            val long = tokens.filter { it.length >= 3 }
-            hits = all.filter { f -> val n = f.name.lowercase(); long.any { n.contains(it) } }
+        val hits = if (tokens.isEmpty()) {
+            all
+        } else {
+            var filtered = all.filter { f -> val n = f.name.lowercase(); tokens.all { n.contains(it) } }
+            if (filtered.isEmpty()) {
+                val long = tokens.filter { it.length >= 3 }
+                filtered = all.filter { f -> val n = f.name.lowercase(); long.any { n.contains(it) } }
+            }
+            filtered
         }
         return hits.sortedByDescending { it.lastModified() }.take(20)
     }
