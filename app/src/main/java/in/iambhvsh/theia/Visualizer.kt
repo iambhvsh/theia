@@ -11,12 +11,14 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Animated Google Assistant 4-dots visualizer view.
- * Reengineered from Google Assistant's signature motion design:
+ * Authentic Google Assistant 4-Colored Soundwave Visualizer.
+ *
+ * Implements Google Assistant's signature motion design:
  * - IDLE: 4 resting dots with subtle breathing scale
- * - LISTENING: Dynamic sine wave oscillation reacting to voice RMS energy
+ * - LISTENING: 4 vertical rounded capsule bars (Blue, Red, Yellow, Green) that elongate
+ *   and bounce in a travelling sine wave dynamically driven by voice RMS energy
  * - THINKING: 4-dot rotating orbital circle
- * - SPEAKING: Cadence wave animation
+ * - SPEAKING: Equalizer voice cadence wave
  */
 class Visualizer @JvmOverloads constructor(
     context: Context,
@@ -69,18 +71,18 @@ class Visualizer @JvmOverloads constructor(
         val cy = h / 2f
         val density = resources.displayMetrics.density
 
-        // Smoothly interpolate RMS for fluid motion
-        dampedRms = dampedRms * 0.75f + targetRms * 0.25f
+        // Smooth exponential moving average for fluid, natural audio response
+        dampedRms = dampedRms * 0.7f + targetRms * 0.3f
 
         val elapsedSec = (SystemClock.uptimeMillis() - startTime) / 1000f
-        val baseRadius = 5f * density
-        val dotSpacing = 14f * density
+        val dotRadius = 4f * density
+        val dotSpacing = 16f * density
 
         when (mode) {
             Mode.IDLE -> {
-                // 4 resting dots with gentle breathing pulse
+                // 4 resting dots with subtle breathing scale
                 val breathe = 1.0f + 0.08f * sin(elapsedSec * 2.5f)
-                val r = baseRadius * breathe
+                val r = dotRadius * breathe
                 for (i in 0 until 4) {
                     val x = cx + (i - 1.5f) * dotSpacing
                     canvas.drawCircle(x, cy, r, paints[i])
@@ -88,45 +90,60 @@ class Visualizer @JvmOverloads constructor(
             }
 
             Mode.LISTENING -> {
-                // Google Assistant signature 4-dot bouncing sine wave
-                val freq = 2.4f // Cycles per second
-                val maxWaveAmp = (8f + dampedRms * 16f) * density
-                val currentRadius = baseRadius + (dampedRms * 2.5f * density)
+                // Authentic Google Assistant vertical capsule sound bars
+                val barWidth = 7f * density
+                val baseHeight = barWidth
+                // Bars stretch vertically based on sound energy + wave oscillation
+                val maxExtraHeight = (6f + dampedRms * 26f) * density
+                val freq = 2.4f
 
                 for (i in 0 until 4) {
-                    // 90 degree phase shift between dots creates the fluid wave
                     val phase = i * (Math.PI / 2.0).toFloat()
-                    val wave = sin(elapsedSec * (2f * Math.PI.toFloat() * freq) + phase)
+                    val wave = abs(sin(elapsedSec * (2f * Math.PI.toFloat() * freq) + phase))
+                    val currentHeight = baseHeight + wave * maxExtraHeight
                     val x = cx + (i - 1.5f) * dotSpacing
-                    val y = cy - (wave * maxWaveAmp)
+                    val left = x - barWidth / 2f
+                    val right = x + barWidth / 2f
+                    val top = cy - currentHeight / 2f
+                    val bottom = cy + currentHeight / 2f
+                    val cornerR = barWidth / 2f
 
-                    canvas.drawCircle(x, y, currentRadius, paints[i])
+                    canvas.drawRoundRect(left, top, right, bottom, cornerR, cornerR, paints[i])
                 }
             }
 
             Mode.THINKING -> {
                 // Google Assistant rotating orbital circle
-                val orbitRadius = 12f * density
-                val rotSpeed = 3.8f // Radians per sec
+                val orbitRadius = 11f * density
+                val rotSpeed = 3.6f
                 for (i in 0 until 4) {
                     val angle = elapsedSec * rotSpeed + (i * Math.PI.toFloat() / 2f)
                     val x = cx + cos(angle) * orbitRadius
                     val y = cy + sin(angle) * orbitRadius
                     val pulse = 1.0f + 0.15f * sin(elapsedSec * 6f + i)
-                    canvas.drawCircle(x, y, baseRadius * pulse, paints[i])
+                    canvas.drawCircle(x, y, dotRadius * pulse, paints[i])
                 }
             }
 
             Mode.SPEAKING -> {
-                // Audio speech cadence wave
+                // Equalizer speech playback cadence wave
+                val barWidth = 6.5f * density
+                val baseHeight = barWidth
+                val maxWave = 14f * density
                 val freq = 3.2f
+
                 for (i in 0 until 4) {
                     val phase = i * 0.9f
                     val wave = abs(sin(elapsedSec * freq * Math.PI.toFloat() + phase))
+                    val currentHeight = baseHeight + wave * maxWave
                     val x = cx + (i - 1.5f) * dotSpacing
-                    val yOffset = (wave - 0.5f) * 10f * density
-                    val r = baseRadius * (0.85f + 0.35f * wave)
-                    canvas.drawCircle(x, cy + yOffset, r, paints[i])
+                    val left = x - barWidth / 2f
+                    val right = x + barWidth / 2f
+                    val top = cy - currentHeight / 2f
+                    val bottom = cy + currentHeight / 2f
+                    val cornerR = barWidth / 2f
+
+                    canvas.drawRoundRect(left, top, right, bottom, cornerR, cornerR, paints[i])
                 }
             }
         }
