@@ -6,11 +6,18 @@ import android.app.AlertDialog
 import android.app.KeyguardManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.InputType
+import android.text.method.PasswordTransformationMethod
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -18,59 +25,190 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
 
-// Theia's UI
+// Theia's UI: Assistant Bottom Sheet with Expandable Settings Page
 class Screen : Activity() {
     private val exec = Executors.newSingleThreadExecutor()
     private lateinit var actions: Actions
+    private lateinit var rootLayout: FrameLayout
+    private lateinit var backdropView: View
+    private lateinit var sheetContainer: LinearLayout
+    private lateinit var settingsPage: ScrollView
+
     private lateinit var btn: Button
+    private lateinit var stopBtn: Button
     private lateinit var heard: TextView
     private lateinit var status: TextView
     private lateinit var results: LinearLayout
+
     @Volatile private var busy = false
     private val currentSessionId = UUID.randomUUID().toString()
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         actions = Actions(this)
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad, pad, pad)
+
+        val density = resources.displayMetrics.density
+        val pad = (16 * density).toInt()
+
+        rootLayout = FrameLayout(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
         }
 
-        // Top bar with Title and Settings button
+        // 1. Transparent Backdrop: Clicking outside sheet dismisses Theia
+        backdropView = View(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(0x80000000.toInt()) // 50% Dim
+            setOnClickListener { finish() }
+        }
+        rootLayout.addView(backdropView)
+
+        // 2. Bottom Sheet Container
+        sheetContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val lp = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM
+            )
+            layoutParams = lp
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(Color.WHITE)
+                val r = 24f * density
+                cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
+            }
+            elevation = 24f * density
+            setPadding(pad, (10 * density).toInt(), pad, pad)
+            // Consume touches inside sheet so backdrop isn't clicked
+            setOnClickListener {}
+        }
+
+        // Pill drag handle
+        val handleBar = View(this).apply {
+            val hlp = LinearLayout.LayoutParams((40 * density).toInt(), (4 * density).toInt()).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                bottomMargin = (12 * density).toInt()
+            }
+            layoutParams = hlp
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(0xFFD1D5DB.toInt())
+                cornerRadius = 2f * density
+            }
+        }
+        sheetContainer.addView(handleBar)
+
+        // Header bar with Title and Top-Right Settings button
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, (8 * resources.displayMetrics.density).toInt())
+            setPadding(0, 0, 0, (6 * density).toInt())
         }
         val title = TextView(this).apply {
             text = "Theia"
-            textSize = 32f
+            textSize = 22f
+            setTextColor(0xFF1F2937.toInt())
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         val settingsBtn = Button(this).apply {
-            text = "⚙ Groq"
-            isAllCaps = false
-            setOnClickListener { showSettingsDialog() }
+            text = "⚙"
+            textSize = 20f
+            background = null
+            setPadding((8 * density).toInt(), 0, (8 * density).toInt(), 0)
+            setOnClickListener { showSettingsPage() }
         }
         topBar.addView(title)
         topBar.addView(settingsBtn)
+        sheetContainer.addView(topBar)
 
-        btn = Button(this).apply { text = "Talk to Theia"; setOnClickListener { listen() } }
-        heard = TextView(this).apply { textSize = 20f; setPadding(0, pad, 0, pad) }
-        status = TextView(this).apply { textSize = 14f }
+        // Query and Status text
+        heard = TextView(this).apply {
+            textSize = 18f
+            setTextColor(0xFF111827.toInt())
+            setPadding(0, (4 * density).toInt(), 0, (4 * density).toInt())
+        }
+        status = TextView(this).apply {
+            textSize = 14f
+            setTextColor(0xFF6B7280.toInt())
+            setPadding(0, 0, 0, (8 * density).toInt())
+        }
+        sheetContainer.addView(heard)
+        sheetContainer.addView(status)
+
+        // Action Buttons Row (Talk Button + Stop Button)
+        val btnRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, (4 * density).toInt(), 0, (8 * density).toInt())
+        }
+
+        btn = Button(this).apply {
+            text = "🎙️ Tap to talk"
+            textSize = 16f
+            isAllCaps = false
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener { listen() }
+        }
+
+        stopBtn = Button(this).apply {
+            text = "⏹ Stop"
+            textSize = 16f
+            isAllCaps = false
+            visibility = View.GONE
+            val slp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginStart = (10 * density).toInt()
+            }
+            layoutParams = slp
+            setOnClickListener {
+                Speaker.stop()
+                ui {
+                    visibility = View.GONE
+                    status.text = "Speech stopped"
+                }
+            }
+        }
+
+        btnRow.addView(btn)
+        btnRow.addView(stopBtn)
+        sheetContainer.addView(btnRow)
+
+        // Results container
         results = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val scrollResults = ScrollView(this).apply {
+            addView(results)
+        }
+        sheetContainer.addView(scrollResults)
 
-        root.addView(topBar)
-        root.addView(btn)
-        root.addView(heard)
-        root.addView(status)
-        root.addView(ScrollView(this).apply { addView(results) },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        setContentView(root)
+        rootLayout.addView(sheetContainer)
 
-        // Warm up speech, voice, and database
+        // 3. Full-page Settings Container
+        settingsPage = buildSettingsPage(density, pad)
+        rootLayout.addView(settingsPage)
+
+        setContentView(rootLayout)
+
+        // Connect speaking listener to toggle Stop button dynamically
+        Speaker.onSpeakingStateChanged = { speaking ->
+            ui {
+                stopBtn.visibility = if (speaking) View.VISIBLE else View.GONE
+                if (!speaking && !busy) {
+                    btn.text = "🎙️ Tap to talk"
+                    btn.isEnabled = true
+                }
+            }
+        }
+
+        // Preload speech, TTS, and database
         exec.execute {
             try {
                 Engine.ensureReady(applicationContext)
@@ -80,32 +218,145 @@ class Screen : Activity() {
                 ui { status.text = "Error: ${e.message}" }
             }
         }
-        if (intent.getBooleanExtra("autolisten", false)) window.decorView.post { listen() }
-        intent.getStringExtra("speak")?.let { if (it.isNotBlank()) exec.execute { Speaker.speak(applicationContext, it) } }
+
+        // Automatic listen on launch like Google Assistant
+        window.decorView.post {
+            listen()
+        }
+
+        intent.getStringExtra("speak")?.let {
+            if (it.isNotBlank()) exec.execute { Speaker.speak(applicationContext, it) }
+        }
     }
 
     override fun onNewIntent(i: Intent) {
         super.onNewIntent(i)
         intent = i
-        if (i.getBooleanExtra("autolisten", false)) listen()
-        i.getStringExtra("speak")?.let { if (it.isNotBlank()) exec.execute { Speaker.speak(applicationContext, it) } }
+        // When launched again or via voice gesture, start listening automatically
+        listen()
+        i.getStringExtra("speak")?.let {
+            if (it.isNotBlank()) exec.execute { Speaker.speak(applicationContext, it) }
+        }
     }
 
-    private fun ui(f: () -> Unit) = runOnUiThread(f)
+    private fun showSettingsPage() {
+        backdropView.visibility = View.GONE
+        sheetContainer.visibility = View.GONE
+        settingsPage.visibility = View.VISIBLE
+    }
 
-    private fun showSettingsDialog() {
+    private fun showBottomSheet() {
+        settingsPage.visibility = View.GONE
+        backdropView.visibility = View.VISIBLE
+        sheetContainer.visibility = View.VISIBLE
+    }
+
+    @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
+    override fun onBackPressed() {
+        if (settingsPage.visibility == View.VISIBLE) {
+            showBottomSheet()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
+    private fun buildSettingsPage(density: Float, pad: Int): ScrollView {
+        val scroll = ScrollView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(Color.WHITE)
+            visibility = View.GONE
+        }
+
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            val pad = (20 * resources.displayMetrics.density).toInt()
-            setPadding(pad, pad, pad, pad)
+            setPadding(pad, (24 * density).toInt(), pad, pad)
         }
+
+        // Top Header
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, (16 * density).toInt())
+        }
+        val backBtn = Button(this).apply {
+            text = "← Back"
+            isAllCaps = false
+            setOnClickListener { showBottomSheet() }
+        }
+        val pageTitle = TextView(this).apply {
+            text = "Settings"
+            textSize = 24f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(0xFF111827.toInt())
+            setPadding((12 * density).toInt(), 0, 0, 0)
+        }
+        header.addView(backBtn)
+        header.addView(pageTitle)
+        layout.addView(header)
+
+        // --- Groq API Key (Masked with Eye Toggle) ---
+        layout.addView(TextView(this).apply {
+            text = "Groq API Key:"
+            textSize = 15f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, (12 * density).toInt(), 0, (4 * density).toInt())
+        })
+
+        val keyRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
         val keyInput = EditText(this).apply {
             hint = "gsk_..."
+            transformationMethod = PasswordTransformationMethod.getInstance()
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setText(Groq.getApiKey(this@Screen))
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
+
+        var isKeyVisible = false
+        val toggleKeyBtn = Button(this).apply {
+            text = "👁"
+            isAllCaps = false
+            setOnClickListener {
+                isKeyVisible = !isKeyVisible
+                if (isKeyVisible) {
+                    keyInput.transformationMethod = null
+                    this.text = "🙈"
+                } else {
+                    keyInput.transformationMethod = PasswordTransformationMethod.getInstance()
+                    this.text = "👁"
+                }
+                keyInput.setSelection(keyInput.text.length)
+            }
+        }
+        keyRow.addView(keyInput)
+        keyRow.addView(toggleKeyBtn)
+        layout.addView(keyRow)
+
+        // --- Model Input ---
+        layout.addView(TextView(this).apply {
+            text = "LLM Model (Real-time):"
+            textSize = 15f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, (16 * density).toInt(), 0, (4 * density).toInt())
+        })
         val modelInput = EditText(this).apply {
             setText(Groq.getModel(this@Screen))
         }
+        layout.addView(modelInput)
+
+        // --- Voice Selector ---
+        layout.addView(TextView(this).apply {
+            text = "Assistant Voice:"
+            textSize = 15f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, (16 * density).toInt(), 0, (4 * density).toInt())
+        })
 
         var currentPreset = Speaker.getPreset(this)
         val presetLabels = Speaker.PRESETS.map { it.label }.toTypedArray()
@@ -129,6 +380,7 @@ class Screen : Activity() {
                     .show()
             }
         }
+        layout.addView(voiceBtn)
 
         val testVoiceBtn = Button(this).apply {
             text = "▶ Preview Voice"
@@ -139,43 +391,56 @@ class Screen : Activity() {
                 }
             }
         }
-
-        layout.addView(TextView(this).apply { text = "Groq API Key:"; textSize = 14f })
-        layout.addView(keyInput)
-        layout.addView(TextView(this).apply {
-            text = "Model (Real-time: qwen/qwen3.8-27b):"
-            textSize = 14f
-            setPadding(0, (12 * resources.displayMetrics.density).toInt(), 0, 0)
-        })
-        layout.addView(modelInput)
-        layout.addView(TextView(this).apply {
-            text = "Assistant Voice:"
-            textSize = 14f
-            setPadding(0, (12 * resources.displayMetrics.density).toInt(), 0, 0)
-        })
-        layout.addView(voiceBtn)
         layout.addView(testVoiceBtn)
 
-        AlertDialog.Builder(this)
-            .setTitle("Theia Assistant Settings")
-            .setView(layout)
-            .setPositiveButton("Save") { _, _ ->
-                val k = keyInput.text.toString().trim()
-                val m = modelInput.text.toString().trim().ifEmpty { Groq.DEFAULT_MODEL }
-                Groq.setApiKey(this, k)
-                Groq.setModel(this, m)
-                Speaker.setPreset(this, currentPreset.id)
-                status.text = "Settings saved ($m, ${currentPreset.label})"
-            }
-            .setNeutralButton("Clear History") { _, _ ->
+        // --- Conversation History Management ---
+        layout.addView(TextView(this).apply {
+            text = "Conversation Memory:"
+            textSize = 15f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, (16 * density).toInt(), 0, (4 * density).toInt())
+        })
+        val clearHistoryBtn = Button(this).apply {
+            text = "Clear History"
+            isAllCaps = false
+            setOnClickListener {
                 exec.execute {
                     Database.get(applicationContext).history().clear()
                     ui { status.text = "Conversation history cleared" }
                 }
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        }
+        layout.addView(clearHistoryBtn)
+
+        // --- Save Settings Button ---
+        val saveBtn = Button(this).apply {
+            text = "Save Settings"
+            textSize = 16f
+            isAllCaps = false
+            val slp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = (24 * density).toInt()
+            }
+            layoutParams = slp
+            setOnClickListener {
+                val k = keyInput.text.toString().trim()
+                val m = modelInput.text.toString().trim().ifEmpty { Groq.DEFAULT_MODEL }
+                Groq.setApiKey(this@Screen, k)
+                Groq.setModel(this@Screen, m)
+                Speaker.setPreset(this@Screen, currentPreset.id)
+                status.text = "Settings saved (${currentPreset.label})"
+                showBottomSheet()
+            }
+        }
+        layout.addView(saveBtn)
+
+        scroll.addView(layout)
+        return scroll
     }
+
+    private fun ui(f: () -> Unit) = runOnUiThread(f)
 
     private fun cleanTranscript(raw: String): String {
         var s = raw.trim()
@@ -214,6 +479,7 @@ class Screen : Activity() {
         busy = true
         Speaker.stop()
         btn.isEnabled = false
+        btn.text = "🎙️ Listening…"
         results.removeAllViews()
         heard.text = ""
         exec.execute {
@@ -224,14 +490,23 @@ class Screen : Activity() {
                 val pcm = Recorder.capture {
                     ui { status.text = "Listening… (hearing you)" }
                 }
-                if (pcm.isEmpty()) { say("I didn't hear anything."); return@execute }
-                ui { status.text = "Transcribing…" }
+                if (pcm.isEmpty()) {
+                    say("I didn't hear anything.")
+                    return@execute
+                }
+                ui {
+                    status.text = "Transcribing…"
+                    btn.text = "Transcribing…"
+                }
                 val rawTranscribe = Engine.transcribe(pcm)
                 android.util.Log.d("Theia", "Raw transcribe response: $rawTranscribe")
                 val text = org.json.JSONObject(rawTranscribe).optString("text").trim()
                 android.util.Log.d("Theia", "Extracted transcribed text: '$text'")
                 ui { heard.text = text.ifEmpty { "(empty)" } }
-                if (text.isEmpty()) { say("I didn't catch that."); return@execute }
+                if (text.isEmpty()) {
+                    say("I didn't catch that.")
+                    return@execute
+                }
                 val prompt = cleanTranscript(text).ifEmpty { text }
                 android.util.Log.d("Theia", "Cleaned prompt for LLM: '$prompt'")
 
@@ -239,7 +514,10 @@ class Screen : Activity() {
 
                 if (Groq.hasApiKey(applicationContext)) {
                     // --- GROQ LLM WITH PERSISTENT SESSION CONTEXT ---
-                    ui { status.text = "Thinking (Groq)…" }
+                    ui {
+                        status.text = "Thinking (Groq)…"
+                        btn.text = "Thinking…"
+                    }
 
                     // Fetch prior conversation history before adding current prompt
                     val history = db.history().getRecent(10)
@@ -320,7 +598,10 @@ class Screen : Activity() {
                 }
 
                 // --- ON-DEVICE LOCAL ENGINE FALLBACK ---
-                ui { status.text = "Thinking (local)…" }
+                ui {
+                    status.text = "Thinking (local)…"
+                    btn.text = "Thinking…"
+                }
                 val raw = Engine.complete(prompt)
                 android.util.Log.d("Theia", "Engine complete raw: '$raw'")
                 val calls = Parser.calls(raw)
@@ -355,7 +636,10 @@ class Screen : Activity() {
                 ui { status.text = "Error: ${e.message}" }
             } finally {
                 busy = false
-                ui { btn.isEnabled = true }
+                ui {
+                    btn.isEnabled = true
+                    if (!Speaker.isSpeaking) btn.text = "🎙️ Tap to talk"
+                }
             }
         }
     }
@@ -398,3 +682,4 @@ class Screen : Activity() {
         super.onDestroy()
     }
 }
+

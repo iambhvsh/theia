@@ -38,6 +38,9 @@ object Speaker {
     @Volatile private var isReady = false
     private val initLatch = CountDownLatch(1)
     @Volatile private var activeLatch: CountDownLatch? = null
+    @Volatile var isSpeaking: Boolean = false
+        private set
+    @Volatile var onSpeakingStateChanged: ((Boolean) -> Unit)? = null
 
     fun getPreset(ctx: Context): VoiceItem {
         val id = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -143,16 +146,24 @@ object Speaker {
 
         t.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(id: String?) {
+                isSpeaking = true
+                onSpeakingStateChanged?.invoke(true)
                 Log.d(TAG, "Playback started ($id)")
             }
             override fun onDone(id: String?) {
+                isSpeaking = false
+                onSpeakingStateChanged?.invoke(false)
                 if (id == utteranceId) latch.countDown()
             }
             @Suppress("OVERRIDE_DEPRECATION")
             override fun onError(id: String?) {
+                isSpeaking = false
+                onSpeakingStateChanged?.invoke(false)
                 if (id == utteranceId) latch.countDown()
             }
             override fun onError(id: String?, errorCode: Int) {
+                isSpeaking = false
+                onSpeakingStateChanged?.invoke(false)
                 if (id == utteranceId) latch.countDown()
             }
         })
@@ -190,6 +201,8 @@ object Speaker {
     }
 
     fun stop() {
+        isSpeaking = false
+        onSpeakingStateChanged?.invoke(false)
         activeLatch?.countDown()
         activeLatch = null
         try { tts?.stop() } catch (_: Throwable) {}
