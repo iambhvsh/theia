@@ -1,16 +1,9 @@
-import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
-
-val localProps = Properties().apply {
-    val f = rootProject.file("local.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
-}
-val groqApiKey: String = localProps.getProperty("groq.api.key") ?: ""
 
 android {
     namespace = "in.iambhvsh.theia"
@@ -25,7 +18,6 @@ android {
         versionName = "1.0"
         ndk { abiFilters += "arm64-v8a" }
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=c++_static" } }
-        buildConfigField("String", "GROQ_API_KEY", "\"$groqApiKey\"")
     }
     buildFeatures {
         buildConfig = true

@@ -29,16 +29,9 @@ object Groq {
 
     fun getApiKey(ctx: Context): String {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val saved = prefs.getString(KEY_API_KEY, null)?.trim()
+        return prefs.getString(KEY_API_KEY, null)?.trim()
             ?: prefs.getString("groq_api_key", null)?.trim()
-        if (!saved.isNullOrEmpty()) return saved
-        return try {
-            val clazz = Class.forName("in.iambhvsh.theia.BuildConfig")
-            val field = clazz.getField("GROQ_API_KEY")
-            (field.get(null) as? String)?.trim() ?: ""
-        } catch (_: Throwable) {
-            ""
-        }
+            ?: ""
     }
 
     fun setApiKey(ctx: Context, key: String) {
@@ -47,6 +40,14 @@ object Groq {
             .edit()
             .putString(KEY_API_KEY, trimmed)
             .putString("groq_api_key", trimmed)
+            .apply()
+    }
+
+    fun clearApiKey(ctx: Context) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_API_KEY)
+            .remove("groq_api_key")
             .apply()
     }
 

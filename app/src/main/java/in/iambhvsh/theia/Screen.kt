@@ -15,6 +15,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
@@ -786,6 +787,10 @@ class Screen : Activity() {
                     listen()
                 }
             }
+            setOnLongClickListener {
+                showSettingsPage()
+                true
+            }
         }
         expandedBottomRow.addView(expandedMicBtn)
 
@@ -903,10 +908,13 @@ class Screen : Activity() {
         }
     }
 
+    private var settingsKeyInput: EditText? = null
+
     private fun showSettingsPage() {
         Speaker.stop()
         backdropView.visibility = View.GONE
         overlayContainer.visibility = View.GONE
+        settingsKeyInput?.setText(Groq.getApiKey(this))
         settingsPage.visibility = View.VISIBLE
     }
 
@@ -980,8 +988,28 @@ class Screen : Activity() {
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(0xFFC4C7C5.toInt())
-            setPadding(0, (8 * density).toInt(), 0, (6 * density).toInt())
+            setPadding(0, (8 * density).toInt(), 0, (4 * density).toInt())
         })
+
+        layout.addView(TextView(this).apply {
+            text = "Required for AI chat, real-time reasoning, and phone tools. Get your free API key at console.groq.com"
+            textSize = 12.5f
+            setTextColor(0xFF8E918F.toInt())
+            setPadding(0, 0, 0, (6 * density).toInt())
+        })
+
+        val openGroqBtn = TextView(this).apply {
+            text = "Get free API key ↗"
+            textSize = 13.5f
+            setTextColor(0xFF3084FF.toInt())
+            setPadding(0, 0, 0, (10 * density).toInt())
+            setOnClickListener {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://console.groq.com/keys")))
+                } catch (_: Exception) {}
+            }
+        }
+        layout.addView(openGroqBtn)
 
         val keyRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1005,6 +1033,7 @@ class Screen : Activity() {
             setTextColor(0xFFE3E3E3.toInt())
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
+        settingsKeyInput = keyInput
 
         var isKeyVisible = false
         val toggleKeyBtn = ImageButton(this).apply {
@@ -1160,10 +1189,19 @@ class Screen : Activity() {
             setOnClickListener {
                 val k = keyInput.text.toString().trim()
                 val m = modelInput.text.toString().trim().ifEmpty { Groq.DEFAULT_MODEL }
-                Groq.setApiKey(this@Screen, k)
+                if (k.isNotEmpty()) {
+                    Groq.setApiKey(this@Screen, k)
+                    val msg = "API key saved (${currentPreset.label})"
+                    showStatus(msg)
+                    Toast.makeText(this@Screen, msg, Toast.LENGTH_SHORT).show()
+                } else {
+                    Groq.clearApiKey(this@Screen)
+                    val msg = "API key removed (${currentPreset.label})"
+                    showStatus(msg)
+                    Toast.makeText(this@Screen, msg, Toast.LENGTH_SHORT).show()
+                }
                 Groq.setModel(this@Screen, m)
                 Speaker.setPreset(this@Screen, currentPreset.id)
-                showStatus("Settings saved (${currentPreset.label})")
                 showOverlay()
             }
         }
@@ -1376,6 +1414,18 @@ class Screen : Activity() {
                         return@execute
                     } catch (e: Exception) {
                         android.util.Log.e("Theia", "Groq request failed, falling back to local engine", e)
+                        val err = e.message ?: ""
+                        if (err.contains("401") || err.contains("invalid_api_key", ignoreCase = true)) {
+                            ui {
+                                showStatus("Invalid Groq API key")
+                                responseTextView.text = "Your Groq API key appears to be invalid.\n\nTap here or long-press the mic to update it in Settings."
+                                responseTextView.setOnClickListener { showSettingsPage() }
+                                responseCard.visibility = View.VISIBLE
+                                topBar.visibility = View.VISIBLE
+                            }
+                            say("Your Groq API key appears to be invalid. Please check it in Settings.")
+                            return@execute
+                        }
                         // Fall through to on-device local engine fallback below
                     }
                 }
@@ -1399,6 +1449,15 @@ class Screen : Activity() {
                     val message = extractMessage(raw)
                     if (message.isNotEmpty()) {
                         say(message)
+                    } else if (!Groq.hasApiKey(applicationContext)) {
+                        ui {
+                            showStatus("Groq API key required for AI chat")
+                            responseTextView.text = "Please enter your Groq API key in Settings to chat with AI.\n\nTap here or long-press the mic to open Settings."
+                            responseTextView.setOnClickListener { showSettingsPage() }
+                            responseCard.visibility = View.VISIBLE
+                            topBar.visibility = View.VISIBLE
+                        }
+                        Speaker.speak(applicationContext, "Please enter your Groq API key in Settings to chat with AI.")
                     } else {
                         ui { showStatus("No action matched.\n$raw") }
                         Speaker.speak(applicationContext, "Sorry, I can't do that yet.")
