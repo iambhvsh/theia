@@ -90,8 +90,18 @@ class Screen : Activity() {
     private val currentSessionId = UUID.randomUUID().toString()
 
     @Suppress("DEPRECATION")
+    private fun disableActivityTransitions(isClosing: Boolean = false) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val type = if (isClosing) OVERRIDE_TRANSITION_CLOSE else OVERRIDE_TRANSITION_OPEN
+            overrideActivityTransition(type, 0, 0)
+        } else {
+            overridePendingTransition(0, 0)
+        }
+    }
+
+    @Suppress("DEPRECATION")
     override fun onCreate(b: Bundle?) {
-        overridePendingTransition(0, 0)
+        disableActivityTransitions(isClosing = false)
         super.onCreate(b)
 
         window.apply {
@@ -347,7 +357,7 @@ class Screen : Activity() {
         Recorder.stop()
         shimmerView.stopShimmer()
         super.finish()
-        overridePendingTransition(0, 0)
+        disableActivityTransitions(isClosing = true)
     }
 
     private fun resDrawable(name: String): Int = resources.getIdentifier(name, "drawable", packageName)
@@ -935,7 +945,7 @@ class Screen : Activity() {
         } else {
             shimmerView.stopShimmer()
             super.onBackPressed()
-            overridePendingTransition(0, 0)
+            disableActivityTransitions(isClosing = true)
         }
     }
 
@@ -1213,7 +1223,15 @@ class Screen : Activity() {
         var s = raw.trim()
         s = s.replace(Regex("^(?i)(hittia|hitia|heath\\s+here|hey\\s+theia|hey\\s+tia|hey\\s+thea|theia|tia|thea|hi\\s+theia|hey|hello\\s+theia|hello\\s+here)[,\\s]*"), "")
         s = s.replace(Regex("^(?i)here\\s+(?=(find|search|open|set|what|how|who|can)\\b)"), "")
-        return s.trim()
+        s = s.replace(Regex("^(?i)(?:then|can you|could you|please|will you|just)\\s+"), "")
+        s = s.replace(Regex("^(?i)opening\\s+"), "open ")
+        // Common ASR misrecognitions and speech splits for popular apps
+        s = s.replace(Regex("(?i)\\b(?:in\\s+)?stagram\\b"), "instagram")
+        s = s.replace(Regex("(?i)\\bwhats\\s+app\\b"), "whatsapp")
+        s = s.replace(Regex("(?i)\\byou\\s+tube\\b"), "youtube")
+        s = s.replace(Regex("(?i)\\bface\\s+book\\b"), "facebook")
+        s = s.replace(Regex("(?i)\\btele\\s+gram\\b"), "telegram")
+        return s.trim().removeSuffix(".")
     }
 
     private fun extractMessage(raw: String): String {
@@ -1327,7 +1345,8 @@ class Screen : Activity() {
         }
     }
 
-    private fun processQuery(prompt: String) {
+    private fun processQuery(rawPrompt: String) {
+        val prompt = cleanTranscript(rawPrompt).ifEmpty { rawPrompt.trim() }
         isThinkingQuery = true
         ui {
             topBar.visibility = View.VISIBLE
@@ -1340,6 +1359,21 @@ class Screen : Activity() {
 
         exec.execute {
             try {
+                // Instant fast-path: if user requested opening an installed app, launch immediately
+                val directAppMatch = Regex("^(?i)(?:open|launch|start|run)\\s+([a-zA-Z0-9 ]+)").find(prompt)
+                if (directAppMatch != null) {
+                    val targetApp = directAppMatch.groupValues[1].trim()
+                    var announced = false
+                    val r = actions.run(Call("open_app", org.json.JSONObject().put("name", targetApp))) { m ->
+                        announced = true
+                        say(m)
+                    }
+                    if (!r.startsWith("App not found")) {
+                        if (!announced) say(r)
+                        return@execute
+                    }
+                }
+
                 val db = Database.get(applicationContext)
 
                 if (Groq.hasApiKey(applicationContext)) {
@@ -1396,6 +1430,18 @@ class Screen : Activity() {
                             }
                             groqResp.content?.let { if (it.isNotBlank()) say(it) }
                         } else if (!groqResp.content.isNullOrBlank()) {
+                            // If model responded with plain text instead of calling open_app for an app request
+                            val appMatch = Regex("^(?i)(?:open|launch|start|run)\\s+([a-zA-Z0-9 ]+)").find(prompt.trim().removeSuffix("."))
+                            if (appMatch != null) {
+                                val targetApp = appMatch.groupValues[1].trim()
+                                var announced = false
+                                val r = actions.run(Call("open_app", org.json.JSONObject().put("name", targetApp))) { m ->
+                                    announced = true
+                                    say(m)
+                                }
+                                if (!announced) say(r)
+                                return@execute
+                            }
                             db.history().insert(
                                 Message(
                                     sessionId = currentSessionId,
