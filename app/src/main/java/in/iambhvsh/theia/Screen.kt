@@ -508,7 +508,7 @@ class Screen : Activity() {
                                 responseCard.visibility = View.GONE
                                 topBar.visibility = View.GONE
                                 responseTextView.text = ""
-                                showStatus("Conversation cleared")
+                                Toast.makeText(this@Screen, "Conversation cleared", Toast.LENGTH_SHORT).show()
                             }
                         }
                         true
@@ -992,7 +992,7 @@ class Screen : Activity() {
         })
 
         layout.addView(TextView(this).apply {
-            text = "Required for AI chat, real-time reasoning, and phone tools. Get your free API key at console.groq.com"
+            text = "Required for real-time reasoning, voice conversation, and phone tools. Get your free API key at console.groq.com"
             textSize = 12.5f
             setTextColor(0xFF8E918F.toInt())
             setPadding(0, 0, 0, (6 * density).toInt())
@@ -1160,7 +1160,7 @@ class Screen : Activity() {
                         responseCard.visibility = View.GONE
                         topBar.visibility = View.GONE
                         responseTextView.text = ""
-                        showStatus("Conversation memory cleared")
+                        Toast.makeText(this@Screen, "Conversation cleared", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -1191,14 +1191,10 @@ class Screen : Activity() {
                 val m = modelInput.text.toString().trim().ifEmpty { Groq.DEFAULT_MODEL }
                 if (k.isNotEmpty()) {
                     Groq.setApiKey(this@Screen, k)
-                    val msg = "API key saved (${currentPreset.label})"
-                    showStatus(msg)
-                    Toast.makeText(this@Screen, msg, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@Screen, "Settings saved", Toast.LENGTH_SHORT).show()
                 } else {
                     Groq.clearApiKey(this@Screen)
-                    val msg = "API key removed (${currentPreset.label})"
-                    showStatus(msg)
-                    Toast.makeText(this@Screen, msg, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@Screen, "API key removed", Toast.LENGTH_SHORT).show()
                 }
                 Groq.setModel(this@Screen, m)
                 Speaker.setPreset(this@Screen, currentPreset.id)
@@ -1417,7 +1413,7 @@ class Screen : Activity() {
                         val err = e.message ?: ""
                         if (err.contains("401") || err.contains("invalid_api_key", ignoreCase = true)) {
                             ui {
-                                showStatus("Invalid Groq API key")
+                                statusTextView.visibility = View.GONE
                                 responseTextView.text = "Your Groq API key appears to be invalid.\n\nTap here or long-press the mic to update it in Settings."
                                 responseTextView.setOnClickListener { showSettingsPage() }
                                 responseCard.visibility = View.VISIBLE
@@ -1451,15 +1447,15 @@ class Screen : Activity() {
                         say(message)
                     } else if (!Groq.hasApiKey(applicationContext)) {
                         ui {
-                            showStatus("Groq API key required for AI chat")
-                            responseTextView.text = "Please enter your Groq API key in Settings to chat with AI.\n\nTap here or long-press the mic to open Settings."
+                            statusTextView.visibility = View.GONE
+                            responseTextView.text = "Please add your Groq API key in Settings to talk with Theia.\n\nTap here or long-press the mic to open Settings."
                             responseTextView.setOnClickListener { showSettingsPage() }
                             responseCard.visibility = View.VISIBLE
                             topBar.visibility = View.VISIBLE
                         }
-                        Speaker.speak(applicationContext, "Please enter your Groq API key in Settings to chat with AI.")
+                        Speaker.speak(applicationContext, "Please add your Groq API key in Settings to talk with Theia.")
                     } else {
-                        ui { showStatus("No action matched.\n$raw") }
+                        ui { statusTextView.visibility = View.GONE }
                         Speaker.speak(applicationContext, "Sorry, I can't do that yet.")
                     }
                     return@execute
