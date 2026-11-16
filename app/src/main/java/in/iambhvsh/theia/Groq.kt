@@ -24,7 +24,7 @@ object Groq {
     private const val PREFS = "groq_prefs"
     private const val KEY_API_KEY = "api_key"
     private const val KEY_MODEL = "model"
-    const val DEFAULT_MODEL = "openai/gpt-oss-120b"
+    const val DEFAULT_MODEL = "qwen/qwen3.8-27b"
     const val FAST_MODEL = "openai/gpt-oss-20b"
 
     private const val ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
@@ -64,7 +64,7 @@ object Groq {
     fun getModel(ctx: Context): String {
         val m = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL
-        if (m.contains("llama") || m.contains("qwen") || m.isEmpty()) {
+        if (m.contains("llama") || m.contains("120b") || m.isEmpty()) {
             return DEFAULT_MODEL
         }
         return m
@@ -330,15 +330,19 @@ object Groq {
                 - `open_play_store`: search and install apps directly from Google Play Store.
                 - `open_url`: open any web link or website directly in the browser.
                 - `search_web`: search Google on the web for live facts, current events, news, or lookups.
-                - `control_flashlight`: turn on or off the device flashlight/torch (e.g. "turn on flashlight", "lumos", "turn off torch").
+                - `control_flashlight`: turn on or off the device flashlight/torch (e.g. "turn on flashlight", "lumos", "luminous", "Knox", "turn off torch").
                 - `adjust_volume`: change media volume up/down, set specific percentage (0-100), or mute.
                 - `open_settings`: open device system settings (wifi, bluetooth, sound, display, apps, battery, general).
                 - `set_timer`: set countdown timers with minutes and labels.
                 - `set_alarm`: set clock alarms for specific times.
                 - `search_files`: locate local documents, photos, and files on storage.
 
+                TOOL CALLING CONVENTION:
+                - When calling tools, you MUST use the EXACT tool function name as defined: `open_app`, `open_play_store`, `open_url`, `search_web`, `control_flashlight`, `adjust_volume`, `open_settings`, `set_timer`, `set_alarm`, `search_files`. Never insert spaces or alter function names.
+
                 BEHAVIOR, SPEECH & INTELLIGENCE PRINCIPLES:
-                - ADAPTIVE BREVITY: For simple actions, status queries, or greetings, respond concisely in 1 to 2 clear spoken sentences. For complex questions, explanations, comparisons, recipes, or creative ideas, provide rich, articulate, and comprehensive answers broken into clean spoken paragraphs.
+                - STRICT SPOKEN BREVITY: You communicate exclusively via voice TTS directly into the user's ear. ALWAYS keep your responses strictly to 1 or 2 concise, punchy spoken sentences (under 35 words).
+                - STRICTLY FORBIDDEN: NEVER write multiple paragraphs, bullet points, numbered lists, markdown, or lengthy essays. Even for complex science, philosophy, history, or explanations, provide a brilliant, direct, intuitive summary in 1 or 2 sentences max.
                 - PURE SPOKEN TEXT: Everything you return is spoken aloud directly by Google Text-to-Speech. NEVER use markdown symbols, asterisks (*, **), bullet characters (•, -), hashes (#), emojis, or code fences. Speak numbers, dates, and times naturally.
                 - PROACTIVE PROBLEM SOLVING: If an app is not installed, inform the user pleasantly and offer alternatives (Play Store download or website). If a command is ambiguous, clarify smartly.
                 - REAL-WORLD GROUNDING: You know the current time, date, battery level, and device from your environment context. When asked for time, date, battery, or device info, use this context directly with total accuracy.
@@ -398,7 +402,7 @@ object Groq {
                 put("reasoning_effort", "low")
             }
             put("temperature", 0.6)
-            put("max_tokens", 300)
+            put("max_tokens", 90)
         }
 
         val conn = URL(ENDPOINT).openConnection() as HttpURLConnection
@@ -507,11 +511,14 @@ object Groq {
             val failedGen = error.optString("failed_generation")
             if (failedGen.isNullOrBlank()) return null
 
-            val fnMatch = Regex("<function=([a-zA-Z0-9_]+)>").find(failedGen) ?: return null
-            val fnName = fnMatch.groupValues[1]
+            val fnMatch = Regex("<function=([a-zA-Z0-9_ ]+)>").find(failedGen) ?: return null
+            var fnName = fnMatch.groupValues[1].trim().replace(" ", "_").lowercase()
+            if (fnName == "control_flash_light") fnName = "control_flashlight"
+            if (fnName == "play_store" || fnName == "open_playstore") fnName = "open_play_store"
+            if (fnName == "open_web" || fnName == "open_browser") fnName = "open_url"
 
             val args = JSONObject()
-            val paramMatches = Regex("<parameter[\\t ]*([a-zA-Z0-9_]*)>([\\s\\S]*?)</parameter>").findAll(failedGen)
+            val paramMatches = Regex("<parameter(?:=|name=|\"|'|[\\t ])*([a-zA-Z0-9_]+)[\"']?>([\\s\\S]*?)</parameter>").findAll(failedGen)
             for (pm in paramMatches) {
                 var pName = pm.groupValues[1].trim()
                 val pVal = pm.groupValues[2].trim()
@@ -519,7 +526,12 @@ object Groq {
                     if (fnName == "open_app") pName = "name"
                     else if (fnName == "search_files") pName = "query"
                 }
-                args.put(pName, pVal)
+                when {
+                    pVal.equals("true", ignoreCase = true) -> args.put(pName, true)
+                    pVal.equals("false", ignoreCase = true) -> args.put(pName, false)
+                    pVal.toIntOrNull() != null -> args.put(pName, pVal.toInt())
+                    else -> args.put(pName, pVal)
+                }
             }
 
             if (fnName == "open_app" && !args.has("name")) {

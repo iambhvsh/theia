@@ -30,6 +30,37 @@ class History(private val helper: DatabaseHelper) {
         return db.insertWithOnConflict("messages", null, values, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
+    fun getSession(sessionId: String, limit: Int = 10): List<Message> {
+        val db = helper.readableDatabase
+        val sql = "SELECT * FROM (SELECT * FROM messages WHERE sessionId = ? ORDER BY timestamp DESC, id DESC LIMIT ?) ORDER BY timestamp ASC, id ASC"
+        val cursor = db.rawQuery(sql, arrayOf(sessionId, limit.toString()))
+        val list = ArrayList<Message>()
+        cursor.use { c ->
+            val idCol = findCol(c, "id")
+            val sessCol = findCol(c, "sessionId", "session_id")
+            val roleCol = findCol(c, "role")
+            val contentCol = findCol(c, "content")
+            val tcCol = findCol(c, "toolCallsJson", "tool_calls_json")
+            val tIdCol = findCol(c, "toolCallId", "tool_call_id")
+            val timeCol = findCol(c, "timestamp")
+
+            while (c.moveToNext()) {
+                list.add(
+                    Message(
+                        id = if (idCol >= 0) c.getLong(idCol) else 0L,
+                        sessionId = if (sessCol >= 0) c.getString(sessCol) else "",
+                        role = if (roleCol >= 0) c.getString(roleCol) else "user",
+                        content = if (contentCol >= 0 && !c.isNull(contentCol)) c.getString(contentCol) else null,
+                        toolCallsJson = if (tcCol >= 0 && !c.isNull(tcCol)) c.getString(tcCol) else null,
+                        toolCallId = if (tIdCol >= 0 && !c.isNull(tIdCol)) c.getString(tIdCol) else null,
+                        timestamp = if (timeCol >= 0) c.getLong(timeCol) else System.currentTimeMillis()
+                    )
+                )
+            }
+        }
+        return list
+    }
+
     fun getRecent(limit: Int): List<Message> {
         val db = helper.readableDatabase
         val sql = "SELECT * FROM (SELECT * FROM messages ORDER BY timestamp DESC, id DESC LIMIT ?) ORDER BY timestamp ASC, id ASC"
@@ -69,9 +100,23 @@ class History(private val helper: DatabaseHelper) {
         return -1
     }
 
+    fun clearSession(sessionId: String) {
+        val db = helper.writableDatabase
+        db.delete("messages", "sessionId = ?", arrayOf(sessionId))
+    }
+
+    fun clearOldSessions(currentSessionId: String) {
+        val db = helper.writableDatabase
+        db.delete("messages", "sessionId != ?", arrayOf(currentSessionId))
+    }
+
     fun clear() {
         val db = helper.writableDatabase
         db.delete("messages", null, null)
+    }
+
+    fun clearAll() {
+        clear()
     }
 }
 

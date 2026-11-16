@@ -24,6 +24,7 @@ import android.text.InputType
 import android.text.TextWatcher
 import android.text.method.PasswordTransformationMethod
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -103,6 +104,11 @@ class Screen : Activity() {
     override fun onCreate(b: Bundle?) {
         disableActivityTransitions(isClosing = false)
         super.onCreate(b)
+
+        // Clear previous conversation sessions on launch to keep each session isolated
+        runCatching {
+            Database.get(applicationContext).history().clearOldSessions(currentSessionId)
+        }
 
         window.apply {
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
@@ -349,6 +355,9 @@ class Screen : Activity() {
         Speaker.stop()
         Recorder.stop()
         shimmerView.stopShimmer()
+        runCatching {
+            Database.get(applicationContext).history().clearSession(currentSessionId)
+        }
         super.onDestroy()
     }
 
@@ -356,6 +365,9 @@ class Screen : Activity() {
         Speaker.stop()
         Recorder.stop()
         shimmerView.stopShimmer()
+        runCatching {
+            Database.get(applicationContext).history().clearSession(currentSessionId)
+        }
         super.finish()
         disableActivityTransitions(isClosing = true)
     }
@@ -700,6 +712,9 @@ class Screen : Activity() {
             )
             layoutParams = clp
             setPadding((24 * density).toInt(), 0, (14 * density).toInt(), 0)
+            setOnClickListener {
+                expandInput()
+            }
         }
 
         // Center "Ask Theia" Text / Tap Area & Dynamic Status
@@ -768,8 +783,11 @@ class Screen : Activity() {
             )
             layoutParams = pilp
             gravity = Gravity.TOP or Gravity.START
-            setOnEditorActionListener { _, actionId, _ ->
-                if (actionId == EditorInfo.IME_ACTION_SEND) {
+            setOnEditorActionListener { _, actionId, event ->
+                if (actionId == EditorInfo.IME_ACTION_SEND ||
+                    actionId == EditorInfo.IME_ACTION_DONE ||
+                    (event != null && event.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
+                ) {
                     submitPrompt()
                     true
                 } else false
@@ -845,6 +863,8 @@ class Screen : Activity() {
     private fun expandInput() {
         if (isExpanded) return
         isExpanded = true
+        Recorder.stop()
+        shimmerView.stopShimmer()
         collapsedInputRow.visibility = View.GONE
         expandedInputCard.visibility = View.VISIBLE
         inputCardContainer.background = GradientDrawable().apply {
@@ -1435,7 +1455,7 @@ class Screen : Activity() {
                 val db = Database.get(applicationContext)
 
                 if (Groq.hasApiKey(applicationContext)) {
-                    val history = db.history().getRecent(10)
+                    val history = db.history().getSession(currentSessionId, 10)
 
                     db.history().insert(
                         Message(
@@ -1495,7 +1515,7 @@ class Screen : Activity() {
 
                             if (needsFollowup) {
                                 try {
-                                    val followUpHistory = db.history().getRecent(10)
+                                    val followUpHistory = db.history().getSession(currentSessionId, 10)
                                     val followUpResp = Groq.complete(applicationContext, followUpHistory, "")
                                     if (followUpResp.toolCalls.isNotEmpty()) {
                                         for (fc in followUpResp.toolCalls) {
@@ -1584,7 +1604,7 @@ class Screen : Activity() {
 
                 // --- ON-DEVICE LOCAL ENGINE FALLBACK ---
                 val p = prompt.lowercase()
-                val prevAssistantMsg = db.history().getRecent(4).lastOrNull { it.role == "assistant" }?.content ?: ""
+                val prevAssistantMsg = db.history().getSession(currentSessionId, 4).lastOrNull { it.role == "assistant" }?.content ?: ""
                 val prevTargetApp = Regex("(?i)don't have\\s+([a-zA-Z0-9 ]+?)\\s+installed").find(prevAssistantMsg)?.groupValues?.get(1)?.trim()
 
                 // Check if user is asking about Play Store or downloading
