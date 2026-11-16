@@ -2,7 +2,11 @@ package `in`.iambhvsh.theia
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Environment
 import android.provider.AlarmClock
@@ -22,6 +26,14 @@ class Actions(private val a: Activity) {
             "open_play_store" -> openPlayStore(c.args.optString("query").ifEmpty { c.args.optString("name").ifEmpty { c.args.optString("app") } }, announce)
             "open_url" -> openUrl(c.args.optString("url").ifEmpty { c.args.optString("query").ifEmpty { c.args.optString("name") } }, announce)
             "search_web" -> searchWeb(c.args.optString("query").ifEmpty { c.args.optString("q") }, announce)
+            "control_flashlight" -> toggleTorch(c.args.optBoolean("enable", true), announce)
+            "adjust_volume" -> adjustVolume(
+                direction = if (c.args.has("direction")) c.args.optString("direction") else null,
+                percent = if (c.args.has("percent")) c.args.optInt("percent") else null,
+                mute = if (c.args.has("mute")) c.args.optBoolean("mute") else null,
+                announce = announce
+            )
+            "open_settings" -> openSettings(c.args.optString("setting"), announce)
             "set_timer" -> timer(c.args.optInt("minutes", -1), c.args.optString("label"))
             "set_alarm" -> alarm(c.args.optInt("hour", -1), c.args.optInt("minute", -1), c.args.optString("label"))
             else -> "Unsupported tool: ${c.name}"
@@ -120,6 +132,87 @@ class Actions(private val a: Activity) {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         a.startActivity(intent)
+        return msg
+    }
+
+    fun toggleTorch(enable: Boolean, announce: (String) -> Unit = {}): String {
+        return try {
+            val cm = a.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val cameraId = cm.cameraIdList.firstOrNull { id ->
+                cm.getCameraCharacteristics(id).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+            } ?: return "No flashlight available on this device"
+            cm.setTorchMode(cameraId, enable)
+            val msg = if (enable) "Turning on the flashlight." else "Turning off the flashlight."
+            announce(msg)
+            msg
+        } catch (e: Exception) {
+            "Could not control flashlight: ${e.message}"
+        }
+    }
+
+    fun adjustVolume(direction: String? = null, percent: Int? = null, mute: Boolean? = null, announce: (String) -> Unit = {}): String {
+        return try {
+            val am = a.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            if (mute == true) {
+                am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, AudioManager.FLAG_SHOW_UI)
+                val msg = "Muting media volume."
+                announce(msg)
+                return msg
+            }
+            if (percent != null && percent >= 0) {
+                val p = percent.coerceIn(0, 100)
+                val target = ((p / 100f) * max).toInt()
+                am.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
+                val msg = "Media volume set to $p percent."
+                announce(msg)
+                return msg
+            }
+            if (direction == "up") {
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
+                val msg = "Volume turned up."
+                announce(msg)
+                return msg
+            } else if (direction == "down") {
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
+                val msg = "Volume turned down."
+                announce(msg)
+                return msg
+            }
+            val curr = ((am.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max) * 100).toInt()
+            "Current media volume is $curr percent."
+        } catch (e: Exception) {
+            "Could not adjust volume: ${e.message}"
+        }
+    }
+
+    fun openSettings(setting: String, announce: (String) -> Unit = {}): String {
+        val s = setting.lowercase().trim()
+        val (action, label) = when {
+            s.contains("wifi") || s.contains("wi-fi") || s.contains("internet") || s.contains("network") ->
+                Settings.ACTION_WIFI_SETTINGS to "Wi-Fi settings"
+            s.contains("bluetooth") || s.contains("bt") ->
+                Settings.ACTION_BLUETOOTH_SETTINGS to "Bluetooth settings"
+            s.contains("display") || s.contains("brightness") || s.contains("screen") ->
+                Settings.ACTION_DISPLAY_SETTINGS to "Display settings"
+            s.contains("sound") || s.contains("audio") || s.contains("volume") ->
+                Settings.ACTION_SOUND_SETTINGS to "Sound settings"
+            s.contains("app") ->
+                Settings.ACTION_APPLICATION_SETTINGS to "Apps settings"
+            s.contains("battery") ->
+                Settings.ACTION_BATTERY_SAVER_SETTINGS to "Battery settings"
+            else ->
+                Settings.ACTION_SETTINGS to "Settings"
+        }
+        val msg = "Opening $label"
+        announce(msg)
+        try {
+            val intent = Intent(action).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
+            a.startActivity(intent)
+        } catch (_: Exception) {
+            val fallback = Intent(Settings.ACTION_SETTINGS).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
+            a.startActivity(fallback)
+        }
         return msg
     }
 

@@ -1,6 +1,10 @@
 package `in`.iambhvsh.theia
 
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
+import android.os.Build
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -10,14 +14,18 @@ import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 object Groq {
     private const val TAG = "Groq"
     private const val PREFS = "groq_prefs"
     private const val KEY_API_KEY = "api_key"
     private const val KEY_MODEL = "model"
-    const val DEFAULT_MODEL = "qwen/qwen3.8-27b"
-    const val FAST_MODEL = "qwen/qwen3.8-27b"
+    const val DEFAULT_MODEL = "openai/gpt-oss-120b"
+    const val FAST_MODEL = "openai/gpt-oss-20b"
 
     private const val ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -56,7 +64,7 @@ object Groq {
     fun getModel(ctx: Context): String {
         val m = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL
-        if (m.contains("llama-3.3") || m.contains("llama-3.1") || m.contains("llama3-") || m == "openai/gpt-oss-20b") {
+        if (m.contains("llama") || m.contains("qwen") || m.isEmpty()) {
             return DEFAULT_MODEL
         }
         return m
@@ -186,6 +194,66 @@ object Groq {
       {
         "type": "function",
         "function": {
+          "name": "control_flashlight",
+          "description": "Turn the device flashlight or torch on or off (e.g. lumos, torch on, turn off flashlight)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "enable": {
+                "type": "boolean",
+                "description": "True to turn on flashlight, False to turn off"
+              }
+            },
+            "required": ["enable"]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "adjust_volume",
+          "description": "Adjust or set device media volume, or mute audio",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "direction": {
+                "type": "string",
+                "enum": ["up", "down"],
+                "description": "Turn volume up or down"
+              },
+              "percent": {
+                "type": "integer",
+                "description": "Set volume to an exact percentage from 0 to 100"
+              },
+              "mute": {
+                "type": "boolean",
+                "description": "Set to true to mute audio"
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "open_settings",
+          "description": "Open a device system settings panel (wifi, bluetooth, sound, display, apps, battery, general)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "setting": {
+                "type": "string",
+                "enum": ["wifi", "bluetooth", "display", "sound", "apps", "battery", "general"],
+                "description": "The specific setting to open"
+              }
+            },
+            "required": ["setting"]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
           "name": "search_files",
           "description": "Search local files stored on the device storage by name or keyword",
           "parameters": {
@@ -203,6 +271,34 @@ object Groq {
     ]
     """.trimIndent())
 
+    fun getSystemContext(ctx: Context): String {
+        return try {
+            val now = SimpleDateFormat("EEEE, MMMM d, yyyy 'at' h:mm a", Locale.US).format(Date())
+            val tz = TimeZone.getDefault().id
+
+            val bIntent = ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level = bIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = bIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            val batteryPct = if (level >= 0 && scale > 0) (level * 100 / scale) else -1
+            val status = bIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+            val chargeStatus = if (isCharging) "charging" else "not charging"
+
+            val model = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}"
+            val os = "Android ${Build.VERSION.RELEASE}"
+
+            """
+            DEVICE & SYSTEM STATUS:
+            - Current Date & Time: $now ($tz)
+            - Device: $model running $os
+            - Battery Level: ${if (batteryPct >= 0) "$batteryPct%" else "Unknown"} ($chargeStatus)
+            """.trimIndent()
+        } catch (_: Exception) {
+            val now = SimpleDateFormat("EEEE, MMMM d, yyyy 'at' h:mm a", Locale.US).format(Date())
+            "DEVICE & SYSTEM STATUS:\n- Current Date & Time: $now"
+        }
+    }
+
     /**
      * Sends prompt and conversation history to Groq chat completions API.
      * Blocks on the calling thread (should be invoked on a background thread).
@@ -218,31 +314,35 @@ object Groq {
         }
 
         val messages = JSONArray()
+        val sysContext = getSystemContext(ctx)
 
         // System prompt instructing conversational brilliance, empathy, and tool coordination
         val sysMsg = JSONObject().apply {
             put("role", "system")
             put("content", """
-                You are Theia, a brilliant, warm, proactive, and natural AI assistant running natively on the user's Android device.
-                You are not a generic robot; you are Theia: insightful, perceptive, articulate, and genuinely helpful.
+                You are Theia, an exceptionally intelligent, proactive, articulate, and natural voice AI assistant running natively on Android.
+                You are not a shallow search engine or a robotic command parser; you are Theia: deeply capable, perceptive, clear-thinking, and insightful across every topic from science, math, coding, philosophy, and history to daily device management.
 
-                REAL-TIME CAPABILITIES & TOOLS:
+                $sysContext
+
+                CORE HARDWARE & TOOL CAPABILITIES:
                 - `open_app`: launch an application installed on the device.
                 - `open_play_store`: search and install apps directly from Google Play Store.
                 - `open_url`: open any web link or website directly in the browser.
-                - `search_web`: search Google on the web for live information, current events, or web queries.
+                - `search_web`: search Google on the web for live facts, current events, news, or lookups.
+                - `control_flashlight`: turn on or off the device flashlight/torch (e.g. "turn on flashlight", "lumos", "turn off torch").
+                - `adjust_volume`: change media volume up/down, set specific percentage (0-100), or mute.
+                - `open_settings`: open device system settings (wifi, bluetooth, sound, display, apps, battery, general).
                 - `set_timer`: set countdown timers with minutes and labels.
                 - `set_alarm`: set clock alarms for specific times.
                 - `search_files`: locate local documents, photos, and files on storage.
 
-                BEHAVIOR & CONVERSATIONAL INTELLIGENCE:
-                - Speak naturally, warmly, and concisely in 1 to 2 spoken sentences.
-                - NEVER output raw status messages, error codes, JSON, bullet points, asterisks, bold text, emojis, or markdown, because every word you generate is spoken directly aloud to the user via TTS.
-                - When the user asks to open or use an app, always attempt `open_app(name="...")`.
-                - If `open_app` indicates an app is not installed, DO NOT regurgitate system errors. Offer smart, thoughtful assistance: let the user know it is not currently on their device, and ask if they would like you to open the Play Store to download it, or open its website in the browser.
-                - When following up on user answers (e.g., "yes", "open play store", "download it", "open website", "check web"), immediately call the appropriate tool (`open_play_store` or `open_url`).
-                - Understand conversational context and pronouns ("it", "that", "the first one", "do it").
-                - For general questions, thoughts, knowledge, calculations, or casual conversation, respond with wit, clarity, and genuine intelligence.
+                BEHAVIOR, SPEECH & INTELLIGENCE PRINCIPLES:
+                - ADAPTIVE BREVITY: For simple actions, status queries, or greetings, respond concisely in 1 to 2 clear spoken sentences. For complex questions, explanations, comparisons, recipes, or creative ideas, provide rich, articulate, and comprehensive answers broken into clean spoken paragraphs.
+                - PURE SPOKEN TEXT: Everything you return is spoken aloud directly by Google Text-to-Speech. NEVER use markdown symbols, asterisks (*, **), bullet characters (•, -), hashes (#), emojis, or code fences. Speak numbers, dates, and times naturally.
+                - PROACTIVE PROBLEM SOLVING: If an app is not installed, inform the user pleasantly and offer alternatives (Play Store download or website). If a command is ambiguous, clarify smartly.
+                - REAL-WORLD GROUNDING: You know the current time, date, battery level, and device from your environment context. When asked for time, date, battery, or device info, use this context directly with total accuracy.
+                - MULTI-TURN MEMORY: You track the flow of conversation, maintaining context across turns and seamlessly resolving pronouns like "it", "that", "do it", or "open the first one".
             """.trimIndent())
         }
         messages.put(sysMsg)
@@ -326,47 +426,78 @@ object Groq {
                 if (rescued != null) {
                     return rescued
                 }
+                // Automatic fallback on 429 rate limit to FAST_MODEL
+                if (code == 429 && model != FAST_MODEL) {
+                    Log.w(TAG, "Rate limit hit on $model, attempting automatic fallback to $FAST_MODEL")
+                    reqBody.put("model", FAST_MODEL)
+                    val fbConn = URL(ENDPOINT).openConnection() as HttpURLConnection
+                    try {
+                        fbConn.requestMethod = "POST"
+                        fbConn.connectTimeout = 15000
+                        fbConn.readTimeout = 25000
+                        fbConn.setRequestProperty("Authorization", "Bearer $apiKey")
+                        fbConn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                        fbConn.setRequestProperty("Accept", "application/json")
+                        fbConn.doOutput = true
+                        OutputStreamWriter(fbConn.outputStream, Charsets.UTF_8).use { w ->
+                            w.write(reqBody.toString())
+                            w.flush()
+                        }
+                        val fbCode = fbConn.responseCode
+                        val fbStream = if (fbCode in 200..299) fbConn.inputStream else fbConn.errorStream
+                        val fbBody = BufferedReader(InputStreamReader(fbStream, Charsets.UTF_8)).use { it.readText() }
+                        if (fbCode in 200..299) {
+                            return parseResponse(fbBody)
+                        }
+                    } finally {
+                        fbConn.disconnect()
+                    }
+                }
                 throw IOException("Groq error ($code): $responseBody")
             }
 
-            val root = JSONObject(responseBody)
-            val choices = root.optJSONArray("choices") ?: JSONArray()
-            if (choices.length() == 0) {
-                return Response(content = null, toolCalls = emptyList(), rawToolCallsJson = null)
-            }
-
-            val choice = choices.getJSONObject(0)
-            val message = choice.optJSONObject("message") ?: JSONObject()
-            val content = if (message.isNull("content")) null else message.optString("content").trim()
-            val rawToolCalls = message.optJSONArray("tool_calls")
-
-            val toolCallsList = ArrayList<Call>()
-            var toolCallsJsonString: String? = null
-
-            if (rawToolCalls != null && rawToolCalls.length() > 0) {
-                toolCallsJsonString = rawToolCalls.toString()
-                for (i in 0 until rawToolCalls.length()) {
-                    val tc = rawToolCalls.getJSONObject(i)
-                    val fn = tc.optJSONObject("function") ?: continue
-                    val name = fn.optString("name")
-                    val id = tc.optString("id").ifEmpty { null }
-                    val args = when (val a = fn.opt("arguments")) {
-                        is JSONObject -> a
-                        is String -> try { JSONObject(a) } catch (_: Exception) { JSONObject() }
-                        else -> JSONObject()
-                    }
-                    toolCallsList.add(Call(name, args, id))
-                }
-            }
-
-            return Response(
-                content = content,
-                toolCalls = toolCallsList,
-                rawToolCallsJson = toolCallsJsonString
-            )
+            return parseResponse(responseBody)
         } finally {
             conn.disconnect()
         }
+    }
+
+    private fun parseResponse(responseBody: String): Response {
+        val root = JSONObject(responseBody)
+        val choices = root.optJSONArray("choices") ?: JSONArray()
+        if (choices.length() == 0) {
+            return Response(content = null, toolCalls = emptyList(), rawToolCallsJson = null)
+        }
+
+        val choice = choices.getJSONObject(0)
+        val message = choice.optJSONObject("message") ?: JSONObject()
+        val content = if (message.isNull("content")) null else message.optString("content").trim()
+        val rawToolCalls = message.optJSONArray("tool_calls")
+
+        val toolCallsList = ArrayList<Call>()
+        var toolCallsJsonString: String? = null
+
+        if (rawToolCalls != null && rawToolCalls.length() > 0) {
+            toolCallsJsonString = rawToolCalls.toString()
+            for (i in 0 until rawToolCalls.length()) {
+                val tc = rawToolCalls.getJSONObject(i)
+                val fn = tc.optJSONObject("function") ?: continue
+                val name = fn.optString("name")
+                val id = tc.optString("id").ifEmpty { null }
+                val args = when (val a = fn.opt("arguments")) {
+                    is JSONObject -> a
+                    is String -> try { JSONObject(a) } catch (_: Exception) { JSONObject() }
+                    else -> JSONObject()
+                }
+                toolCallsList.add(Call(name, args, id))
+            }
+        }
+
+        return Response(
+            content = content,
+            toolCalls = toolCallsList,
+            rawToolCallsJson = toolCallsJsonString
+        )
     }
 
     private fun tryParseFailedToolCall(errJson: String): Response? {

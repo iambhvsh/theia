@@ -11,7 +11,7 @@ import kotlin.math.sqrt
 object Recorder {
     private const val TAG = "TheiaRecorder"
     private const val SR = 16000
-    private const val DEFAULT_START_THRESH = 0.0032f // Very sensitive speech onset threshold
+    private const val DEFAULT_START_THRESH = 0.0080f // Robust speech onset threshold (rejects room hum & breath)
     private const val END_CHUNKS = 6                // 100 ms each -> 600 ms silence ends capture (ultra-responsive real-time)
     private const val WAIT_CHUNKS = 70              // 7 s initial wait before giving up
     private const val PRE_ROLL_CHUNKS = 5           // Keep ~500 ms of audio before speech trigger
@@ -106,7 +106,7 @@ object Recorder {
                 onRmsUpdate?.invoke((rms * 15f).coerceIn(0f, 1f))
 
                 // Dynamically track ambient noise baseline before speech triggers
-                if (!started && rms < 0.008f) {
+                if (!started && rms < 0.012f) {
                     if (ambientCount == 0) {
                         ambientNoise = rms
                         ambientCount = 1
@@ -114,8 +114,8 @@ object Recorder {
                         ambientNoise = ambientNoise * 0.85f + rms * 0.15f
                         ambientCount++
                     }
-                    startThresh = maxOf(DEFAULT_START_THRESH, minOf(0.015f, ambientNoise * 2.5f))
-                    continueThresh = maxOf(0.0022f, minOf(0.008f, ambientNoise * 1.6f))
+                    startThresh = maxOf(DEFAULT_START_THRESH, minOf(0.025f, ambientNoise * 2.8f))
+                    continueThresh = maxOf(0.0035f, minOf(0.012f, ambientNoise * 1.8f))
                 }
 
                 if (!started) {
@@ -190,7 +190,7 @@ object Recorder {
             rec.release()
         }
 
-        if (!started || out.isEmpty() || speechChunks < 2) {
+        if (!started || out.isEmpty() || speechChunks < 4) {
             Log.d(TAG, "Insufficient speech: started=$started, speechChunks=$speechChunks, samples=${out.size}")
             return FloatArray(0)
         }
@@ -210,13 +210,17 @@ object Recorder {
             if (a > peak) peak = a
         }
 
-        if (peak > 0.003f) {
-            val targetPeak = 0.85f
-            val gain = (targetPeak / peak).coerceIn(1.0f, 35.0f)
-            Log.d(TAG, "Normalizing PCM: raw peak=$peak, applying gain=$gain -> target peak=$targetPeak")
-            for (i in pcm.indices) {
-                pcm[i] = (pcm[i] * gain).coerceIn(-1.0f, 1.0f)
-            }
+        // Reject room silence/noise: real human speech into a phone microphone has peak >= 0.035
+        if (peak < 0.035f) {
+            Log.d(TAG, "Audio rejected as ambient silence/noise: raw peak=$peak < 0.035")
+            return FloatArray(0)
+        }
+
+        val targetPeak = 0.85f
+        val gain = (targetPeak / peak).coerceIn(1.0f, 8.0f)
+        Log.d(TAG, "Normalizing PCM: raw peak=$peak, applying gain=$gain -> target peak=$targetPeak")
+        for (i in pcm.indices) {
+            pcm[i] = (pcm[i] * gain).coerceIn(-1.0f, 1.0f)
         }
 
         Log.d(TAG, "Final audio: ${pcm.size} samples (${pcm.size / SR.toFloat()}s)")

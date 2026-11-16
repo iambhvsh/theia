@@ -430,19 +430,37 @@ class Screen : Activity() {
             layoutParams = slp
             isFillViewport = true
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            background = null
+            isFocusable = false
+            isFocusableInTouchMode = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                defaultFocusHighlightEnabled = false
+            }
         }
 
         val textContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            background = null
+            isFocusable = false
+            isFocusableInTouchMode = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                defaultFocusHighlightEnabled = false
+            }
         }
 
         responseTextView = TextView(this).apply {
             text = ""
-            textSize = 18f
+            textSize = 17.5f
             setTextColor(0xFFE3E3E3.toInt())
             setLineSpacing(0f, 1.25f)
             typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-            setTextIsSelectable(true)
+            background = null
+            highlightColor = Color.TRANSPARENT
+            isFocusable = false
+            isFocusableInTouchMode = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                defaultFocusHighlightEnabled = false
+            }
         }
         textContainer.addView(responseTextView)
 
@@ -1219,6 +1237,27 @@ class Screen : Activity() {
 
     private fun ui(f: () -> Unit) = runOnUiThread(f)
 
+    private fun isWhisperHallucination(text: String, durationSec: Float): Boolean {
+        val norm = text.trim().lowercase().replace(Regex("[.!?,;:\"]"), "").trim()
+        val phantomPhrases = setOf(
+            "thank you", "thanks", "thank you very much", "thanks for watching",
+            "thank you for watching", "please subscribe", "subtitles by",
+            "you", "bye", "bye bye", "so", "yeah", "okay", "watching",
+            "amara org", "amara", "silence", "music", "applause"
+        )
+        // If audio was brief (< 2.5s) and matches any hallucination phantom phrase
+        if (durationSec < 2.5f && phantomPhrases.contains(norm)) {
+            return true
+        }
+        // Always catch YouTube outro watermarks regardless of duration if there is no other text
+        if (norm.startsWith("thanks for watching") || norm.startsWith("thank you for watching") ||
+            norm.startsWith("please subscribe") || norm.startsWith("subtitles by") ||
+            norm.contains("amara org")) {
+            return true
+        }
+        return false
+    }
+
     private fun cleanTranscript(raw: String): String {
         var s = raw.trim()
         s = s.replace(Regex("^(?i)(hittia|hitia|heath\\s+here|hey\\s+theia|hey\\s+tia|hey\\s+thea|theia|tia|thea|hi\\s+theia|hey|hello\\s+theia|hello\\s+here)[,\\s]*"), "")
@@ -1266,7 +1305,7 @@ class Screen : Activity() {
             responseTextView.text = trimmed
             showStatus("")
             responseTextScroll.post {
-                responseTextScroll.fullScroll(View.FOCUS_DOWN)
+                responseTextScroll.smoothScrollTo(0, responseTextView.bottom)
             }
         }
         Speaker.speak(applicationContext, trimmed)
@@ -1325,7 +1364,16 @@ class Screen : Activity() {
                     return@execute
                 }
 
+                val durationSec = pcm.size / 16000f
+                if (isWhisperHallucination(text, durationSec)) {
+                    android.util.Log.d("Theia", "Filtered Whisper silence hallucination: '$text' (${durationSec}s)")
+                    return@execute
+                }
+
                 val prompt = cleanTranscript(text).ifEmpty { text }
+                if (prompt.isEmpty() || prompt.matches(Regex("^[.,!?:;\\s]+$"))) {
+                    return@execute
+                }
                 processQuery(prompt)
 
             } catch (e: Throwable) {
@@ -1568,6 +1616,62 @@ class Screen : Activity() {
                         say(r)
                         return@execute
                     }
+                }
+
+                // Flashlight / torch
+                if (p.contains("flashlight") || p.contains("torch") || p == "lumos" || p == "nox") {
+                    val enable = !p.contains("off") && p != "nox"
+                    val r = actions.toggleTorch(enable) { m -> say(m) }
+                    say(r)
+                    return@execute
+                }
+
+                // Media volume
+                if (p.contains("volume") || p.contains("mute") || p.contains("unmute")) {
+                    val isMute = p.contains("mute") && !p.contains("unmute")
+                    val dir = if (p.contains("up") || p.contains("raise") || p.contains("increase") || p.contains("louder")) "up"
+                              else if (p.contains("down") || p.contains("lower") || p.contains("decrease") || p.contains("quieter")) "down"
+                              else null
+                    val pctMatch = Regex("(\\d+)\\s*%").find(p)
+                    val pct = pctMatch?.groupValues?.get(1)?.toIntOrNull()
+                    val r = actions.adjustVolume(direction = dir, percent = pct, mute = if (isMute) true else null) { m -> say(m) }
+                    say(r)
+                    return@execute
+                }
+
+                // Settings
+                if (p.contains("setting") || p.contains("settings") || p.contains("bluetooth") || p.contains("wifi") || p.contains("wi-fi")) {
+                    val r = actions.openSettings(p) { m -> say(m) }
+                    say(r)
+                    return@execute
+                }
+
+                // Time, date & battery
+                if (p.contains("what time") || p.contains("time is it") || p == "time") {
+                    val timeStr = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(java.util.Date())
+                    say("It's $timeStr.")
+                    return@execute
+                }
+                if (p.contains("what day") || p.contains("what's today") || p.contains("what is today") || p.contains("today's date") || p.contains("what date")) {
+                    val dateStr = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy", java.util.Locale.US).format(java.util.Date())
+                    say("Today is $dateStr.")
+                    return@execute
+                }
+                if (p.contains("battery") || p.contains("charge") || p.contains("battery percentage")) {
+                    val ifilter = android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED)
+                    val bIntent = applicationContext.registerReceiver(null, ifilter)
+                    val lvl = bIntent?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                    val scale = bIntent?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1) ?: -1
+                    val pct = if (lvl >= 0 && scale > 0) (lvl * 100 / scale) else -1
+                    val status = bIntent?.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1) ?: -1
+                    val isCharging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING || status == android.os.BatteryManager.BATTERY_STATUS_FULL
+                    val chargeMsg = if (isCharging) "and currently charging" else ""
+                    if (pct >= 0) {
+                        say("Your battery is at $pct percent $chargeMsg.".trim())
+                    } else {
+                        say("I couldn't read the battery level right now.")
+                    }
+                    return@execute
                 }
 
                 val appLaunch = Regex("^(?i)(?:open|launch|start|run)\\s+([a-zA-Z0-9 ]+)").find(prompt.removeSuffix("."))
