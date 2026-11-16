@@ -32,7 +32,7 @@ class History(private val helper: DatabaseHelper) {
 
     fun getRecent(limit: Int): List<Message> {
         val db = helper.readableDatabase
-        val sql = "SELECT * FROM (SELECT * FROM messages ORDER BY timestamp DESC LIMIT ?) ORDER BY timestamp ASC"
+        val sql = "SELECT * FROM (SELECT * FROM messages ORDER BY timestamp DESC, id DESC LIMIT ?) ORDER BY timestamp ASC, id ASC"
         val cursor = db.rawQuery(sql, arrayOf(limit.toString()))
         val list = ArrayList<Message>()
         cursor.use { c ->

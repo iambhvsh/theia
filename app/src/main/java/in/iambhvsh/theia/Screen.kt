@@ -1250,9 +1250,12 @@ class Screen : Activity() {
         return ""
     }
 
-    private fun say(text: String) {
+    @Volatile private var shouldListenAfter = false
+
+    private fun say(text: String, autoListen: Boolean? = null) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
+        shouldListenAfter = autoListen ?: (trimmed.endsWith("?") || trimmed.endsWith("?\""))
         ui {
             isThinkingQuery = false
             shimmerView.setThinking(false)
@@ -1361,17 +1364,24 @@ class Screen : Activity() {
             try {
                 // Instant fast-path: if user requested opening an installed app, launch immediately
                 val directAppMatch = Regex("^(?i)(?:open|launch|start|run)\\s+([a-zA-Z0-9 ]+)").find(prompt)
-                if (directAppMatch != null) {
+                val isStoreOrWeb = prompt.contains("play store", ignoreCase = true) ||
+                                   prompt.contains("store", ignoreCase = true) ||
+                                   prompt.contains("site", ignoreCase = true) ||
+                                   prompt.contains("website", ignoreCase = true) ||
+                                   prompt.contains("web", ignoreCase = true) ||
+                                   prompt.contains("browser", ignoreCase = true)
+                if (directAppMatch != null && !isStoreOrWeb) {
                     val targetApp = directAppMatch.groupValues[1].trim()
                     var announced = false
-                    val r = actions.run(Call("open_app", org.json.JSONObject().put("name", targetApp))) { m ->
+                    val r = actions.openApp(targetApp) { m ->
                         announced = true
                         say(m)
                     }
-                    if (!r.startsWith("App not found")) {
+                    if (r.startsWith("Opening ")) {
                         if (!announced) say(r)
                         return@execute
                     }
+                    // If not installed on device, fall through to Groq / Assistant for intelligent handling
                 }
 
                 val db = Database.get(applicationContext)
@@ -1400,6 +1410,8 @@ class Screen : Activity() {
                                 )
                             )
 
+                            var needsFollowup = false
+
                             for (c in groqResp.toolCalls) {
                                 if (c.name == "search_files") {
                                     searchFlow(c.args.optString("query"))
@@ -1426,21 +1438,71 @@ class Screen : Activity() {
                                         toolCallId = c.id
                                     )
                                 )
-                                if (!announced) say(r)
+                                if (r.startsWith("Opening ") || r.startsWith("Timer:") || r.startsWith("Alarm:") || r.startsWith("Searching ")) {
+                                    if (!announced) say(r)
+                                } else {
+                                    needsFollowup = true
+                                }
                             }
-                            groqResp.content?.let { if (it.isNotBlank()) say(it) }
+
+                            if (needsFollowup) {
+                                try {
+                                    val followUpHistory = db.history().getRecent(10)
+                                    val followUpResp = Groq.complete(applicationContext, followUpHistory, "")
+                                    if (followUpResp.toolCalls.isNotEmpty()) {
+                                        for (fc in followUpResp.toolCalls) {
+                                            actions.run(fc) { m -> say(m) }
+                                        }
+                                    } else if (!followUpResp.content.isNullOrBlank()) {
+                                        db.history().insert(
+                                            Message(
+                                                sessionId = currentSessionId,
+                                                role = "assistant",
+                                                content = followUpResp.content
+                                            )
+                                        )
+                                        say(followUpResp.content)
+                                    } else {
+                                        say("You don't have that app installed on your device. Would you like me to open it on the Play Store to download, or open its website?")
+                                    }
+                                } catch (_: Exception) {
+                                    say("You don't have that app installed on your device. Would you like me to open it on the Play Store to download, or open its website?")
+                                }
+                            } else if (groqResp.content?.isNotBlank() == true) {
+                                say(groqResp.content)
+                            }
+                            return@execute
                         } else if (!groqResp.content.isNullOrBlank()) {
                             // If model responded with plain text instead of calling open_app for an app request
                             val appMatch = Regex("^(?i)(?:open|launch|start|run)\\s+([a-zA-Z0-9 ]+)").find(prompt.trim().removeSuffix("."))
-                            if (appMatch != null) {
+                            val isStoreOrWebPrompt = prompt.contains("play store", ignoreCase = true) ||
+                                                     prompt.contains("store", ignoreCase = true) ||
+                                                     prompt.contains("site", ignoreCase = true) ||
+                                                     prompt.contains("website", ignoreCase = true) ||
+                                                     prompt.contains("web", ignoreCase = true) ||
+                                                     prompt.contains("browser", ignoreCase = true)
+                            if (appMatch != null && !isStoreOrWebPrompt) {
                                 val targetApp = appMatch.groupValues[1].trim()
                                 var announced = false
-                                val r = actions.run(Call("open_app", org.json.JSONObject().put("name", targetApp))) { m ->
+                                val r = actions.openApp(targetApp) { m ->
                                     announced = true
                                     say(m)
                                 }
-                                if (!announced) say(r)
-                                return@execute
+                                if (r.startsWith("Opening ")) {
+                                    if (!announced) say(r)
+                                    return@execute
+                                } else {
+                                    val notFoundMsg = "You don't have $targetApp installed on your device. Would you like me to open it on the Play Store to download, or open its website?"
+                                    db.history().insert(
+                                        Message(
+                                            sessionId = currentSessionId,
+                                            role = "assistant",
+                                            content = notFoundMsg
+                                        )
+                                    )
+                                    say(notFoundMsg)
+                                    return@execute
+                                }
                             }
                             db.history().insert(
                                 Message(
@@ -1473,11 +1535,65 @@ class Screen : Activity() {
                 }
 
                 // --- ON-DEVICE LOCAL ENGINE FALLBACK ---
+                val p = prompt.lowercase()
+                val prevAssistantMsg = db.history().getRecent(4).lastOrNull { it.role == "assistant" }?.content ?: ""
+                val prevTargetApp = Regex("(?i)don't have\\s+([a-zA-Z0-9 ]+?)\\s+installed").find(prevAssistantMsg)?.groupValues?.get(1)?.trim()
+
+                // Check if user is asking about Play Store or downloading
+                if (p.contains("play store") || p.contains("playstore") || p.contains("download") || p.contains("install")) {
+                    var target = prompt.replace(Regex("(?i)\\b(?:open|launch|start|run|in|on|the|from|to)?\\s*(?:google\\s*)?play\\s*store\\b"), "")
+                        .replace(Regex("(?i)\\b(?:download|install|get|it|yes|sure|please)\\b"), "")
+                        .trim()
+                    if (target.isEmpty() && !prevTargetApp.isNullOrEmpty()) {
+                        target = prevTargetApp
+                    }
+                    if (target.isNotEmpty()) {
+                        val r = actions.openPlayStore(target) { m -> say(m) }
+                        say(r)
+                        return@execute
+                    }
+                }
+
+                // Check if user is asking about website or browser
+                if (p.contains("website") || p.contains("site") || p.contains("browser") || p.contains("web")) {
+                    var target = prompt.replace(Regex("(?i)\\b(?:open|launch|start|run|in|on|the|view)?\\s*(?:website|site|browser|web)\\b"), "")
+                        .replace(Regex("(?i)\\b(?:it|yes|sure|please)\\b"), "")
+                        .trim()
+                    if (target.isEmpty() && !prevTargetApp.isNullOrEmpty()) {
+                        target = prevTargetApp
+                    }
+                    if (target.isNotEmpty()) {
+                        val url = if (target.contains(".")) target else "https://${target.lowercase().replace(" ", "")}.com"
+                        val r = actions.openUrl(url) { m -> say(m) }
+                        say(r)
+                        return@execute
+                    }
+                }
+
+                val appLaunch = Regex("^(?i)(?:open|launch|start|run)\\s+([a-zA-Z0-9 ]+)").find(prompt.removeSuffix("."))
+                if (appLaunch != null) {
+                    val target = appLaunch.groupValues[1].trim()
+                    val r = actions.openApp(target)
+                    if (r.startsWith("Opening ")) {
+                        say(r)
+                    } else {
+                        val notFoundMsg = "You don't have $target installed on your device. Would you like me to open it on the Play Store to download, or open its website?"
+                        db.history().insert(
+                            Message(
+                                sessionId = currentSessionId,
+                                role = "assistant",
+                                content = notFoundMsg
+                            )
+                        )
+                        say(notFoundMsg)
+                    }
+                    return@execute
+                }
+
                 val raw = Engine.complete(prompt)
                 android.util.Log.d("Theia", "Engine complete raw: '$raw'")
                 val calls = Parser.calls(raw)
                 if (calls.isEmpty()) {
-                    val p = prompt.lowercase()
                     if (p.contains("how are you")) {
                         say("I'm doing well, thank you. How can I help you today?")
                         return@execute
@@ -1517,7 +1633,14 @@ class Screen : Activity() {
                         announced = true
                         say(m)
                     }
-                    if (!announced) say(r)
+                    if (r.startsWith("Opening ") || r.startsWith("Timer:") || r.startsWith("Alarm:") || r.startsWith("Searching ")) {
+                        if (!announced) say(r)
+                    } else if (c.name == "open_app") {
+                        val target = c.args.optString("name")
+                        say("You don't have $target installed on your device. Would you like me to open it on the Play Store to download, or open its website?")
+                    } else {
+                        if (!announced) say(r)
+                    }
                 }
             } catch (e: Throwable) {
                 ui { showStatus("Error: ${e.message}") }
@@ -1527,9 +1650,14 @@ class Screen : Activity() {
                 ui {
                     shimmerView.setThinking(false)
                     shimmerView.stopShimmer()
-                    setMicActive(false)
-                    if (!Speaker.isSpeaking) {
-                        setPillStatus(null)
+                    if (shouldListenAfter && !isFinishing && !isDestroyed) {
+                        shouldListenAfter = false
+                        listen()
+                    } else {
+                        setMicActive(false)
+                        if (!Speaker.isSpeaking) {
+                            setPillStatus(null)
+                        }
                     }
                 }
             }

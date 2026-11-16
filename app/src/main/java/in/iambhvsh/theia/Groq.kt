@@ -73,7 +73,7 @@ object Groq {
         "type": "function",
         "function": {
           "name": "open_app",
-          "description": "Open an installed Android app on the device by its name (e.g. YouTube, Spotify, Camera, Settings, Chrome, Maps)",
+          "description": "Open an installed Android app on the device by its name (e.g. YouTube, Spotify, Camera, Settings, Chrome, Maps, Instagram, Twitter)",
           "parameters": {
             "type": "object",
             "properties": {
@@ -83,6 +83,57 @@ object Groq {
               }
             },
             "required": ["name"]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "open_play_store",
+          "description": "Open Google Play Store to install, download, or search for an app (e.g. Twitter, Netflix, Duolingo)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "description": "The name of the app to search or download on Google Play Store"
+              }
+            },
+            "required": ["query"]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "open_url",
+          "description": "Open a website URL in the device web browser (e.g. https://x.com, https://twitter.com, https://reddit.com)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "The website URL to open"
+              }
+            },
+            "required": ["url"]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "search_web",
+          "description": "Search Google on the web for information or queries",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "description": "Search query keywords"
+              }
+            },
+            "required": ["query"]
           }
         }
       },
@@ -168,19 +219,30 @@ object Groq {
 
         val messages = JSONArray()
 
-        // System prompt instructing conversational brevity and mandatory tool calling
+        // System prompt instructing conversational brilliance, empathy, and tool coordination
         val sysMsg = JSONObject().apply {
             put("role", "system")
             put("content", """
-                You are Theia, a fast, intelligent, and natural voice assistant running directly on the user's Android phone.
-                You have FULL SYSTEM PERMISSION to perform actions on this device.
-                CRITICAL INSTRUCTIONS:
-                - Whenever the user asks to open, launch, or use any app (e.g. Instagram, WhatsApp, YouTube, Spotify, Camera, Chrome, Settings), you MUST ALWAYS call the open_app tool immediately with the app's name. NEVER refuse, NEVER claim you cannot open apps, and NEVER tell the user to open it manually.
-                - Whenever the user asks to set a timer or alarm, you MUST call set_timer or set_alarm immediately.
-                - Whenever the user asks to find or search files, you MUST call search_files immediately.
-                - Always prefer invoking the appropriate tool over plain text when an action is requested.
-                - Respond conversationally, concisely, and directly in 1 short sentence (maximum 12 words).
-                - Never use asterisks, markdown, bullets, emojis, or code blocks, because all responses are spoken aloud.
+                You are Theia, a brilliant, warm, proactive, and natural AI assistant running natively on the user's Android device.
+                You are not a generic robot; you are Theia: insightful, perceptive, articulate, and genuinely helpful.
+
+                REAL-TIME CAPABILITIES & TOOLS:
+                - `open_app`: launch an application installed on the device.
+                - `open_play_store`: search and install apps directly from Google Play Store.
+                - `open_url`: open any web link or website directly in the browser.
+                - `search_web`: search Google on the web for live information, current events, or web queries.
+                - `set_timer`: set countdown timers with minutes and labels.
+                - `set_alarm`: set clock alarms for specific times.
+                - `search_files`: locate local documents, photos, and files on storage.
+
+                BEHAVIOR & CONVERSATIONAL INTELLIGENCE:
+                - Speak naturally, warmly, and concisely in 1 to 2 spoken sentences.
+                - NEVER output raw status messages, error codes, JSON, bullet points, asterisks, bold text, emojis, or markdown, because every word you generate is spoken directly aloud to the user via TTS.
+                - When the user asks to open or use an app, always attempt `open_app(name="...")`.
+                - If `open_app` indicates an app is not installed, DO NOT regurgitate system errors. Offer smart, thoughtful assistance: let the user know it is not currently on their device, and ask if they would like you to open the Play Store to download it, or open its website in the browser.
+                - When following up on user answers (e.g., "yes", "open play store", "download it", "open website", "check web"), immediately call the appropriate tool (`open_play_store` or `open_url`).
+                - Understand conversational context and pronouns ("it", "that", "the first one", "do it").
+                - For general questions, thoughts, knowledge, calculations, or casual conversation, respond with wit, clarity, and genuine intelligence.
             """.trimIndent())
         }
         messages.put(sysMsg)
@@ -196,7 +258,11 @@ object Groq {
                 }
                 "assistant" -> {
                     if (!toolCallsJson.isNullOrBlank()) {
-                        msgObj.put("content", JSONObject.NULL)
+                        if (!content.isNullOrBlank()) {
+                            msgObj.put("content", content)
+                        } else {
+                            msgObj.put("content", JSONObject.NULL)
+                        }
                         msgObj.put("tool_calls", JSONArray(toolCallsJson))
                     } else {
                         msgObj.put("content", content ?: "")
@@ -214,11 +280,13 @@ object Groq {
             }
         }
 
-        // Add current user prompt
-        messages.put(JSONObject().apply {
-            put("role", "user")
-            put("content", userPrompt)
-        })
+        // Add current user prompt if provided
+        if (userPrompt.isNotBlank()) {
+            messages.put(JSONObject().apply {
+                put("role", "user")
+                put("content", userPrompt)
+            })
+        }
 
         val model = getModel(ctx)
         val reqBody = JSONObject().apply {
