@@ -17,12 +17,8 @@ import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 
 /**
- * Shimmer: Production AGSL GPU RuntimeShader recreation of Google Gemini's
- * authentic hands-free activation overlay and screen perimeter glow.
- *
- * Combines 2D Rounded-Box Signed Distance Field (SDF) geometry, hardware display
- * corner radius extraction, liquid-light wave turbulence, real-time voice amplitude
- * reactivity, and exponential dual-layer light bloom.
+ * Screen perimeter glow rendered via AGSL RuntimeShader (Android 13+).
+ * Computes boundary distance using a rounded-box signed distance field.
  */
 class Shimmer(context: Context) : View(context) {
 
@@ -38,11 +34,11 @@ class Shimmer(context: Context) : View(context) {
             uniform float iAudioLevel;    // 0.0 (silence) -> 1.0 (loud speech)
             uniform float iThinking;      // 0.0 (listening) -> 1.0 (processing state)
 
-            // Authentic Google Gemini Palette
-            const float3 GEMINI_BLUE   = float3(0.259, 0.522, 0.957); // #4285F4
-            const float3 GEMINI_VIOLET = float3(0.608, 0.447, 0.796); // #9B72CB
-            const float3 GEMINI_CORAL  = float3(0.851, 0.396, 0.439); // #D96570
-            const float3 GEMINI_CYAN   = float3(0.141, 0.757, 0.878); // #24C1E0
+            // Gradient palette
+            const float3 COLOR_BLUE   = float3(0.259, 0.522, 0.957);
+            const float3 COLOR_VIOLET = float3(0.608, 0.447, 0.796);
+            const float3 COLOR_CORAL  = float3(0.851, 0.396, 0.439);
+            const float3 COLOR_CYAN   = float3(0.141, 0.757, 0.878);
 
             // Inigo Quilez Signed Distance Function for a rounded rectangle with per-corner radii
             float sdRoundBox(float2 p, float2 b, float4 r) {
@@ -77,21 +73,21 @@ class Shimmer(context: Context) : View(context) {
                 float audioBoost = minDim * 0.038 * iAudioLevel * organicWave;
                 float totalThickness = (baseThickness + audioBoost + (minDim * 0.016 * organicWave));
 
-                // Dual-layer exponential light falloff with edge retraction ("suction" effect into the bezel)
+                // Exponential light falloff toward screen center
                 float d = max(distFromEdge, 0.0);
                 float retract = max(pow(iIntensity, 1.6), 0.001);
                 float coreGlow = exp(-d / max(totalThickness * 0.35 * retract, 0.8));
                 float softBloom = exp(-d / max(totalThickness * 1.45 * retract, 1.5)) * (iIntensity * iIntensity);
                 float combinedGlow = (coreGlow * 0.88 + softBloom * 0.44) * iIntensity;
 
-                // Smooth 4-color orbital sweep around the perimeter
+                // 4-color orbital sweep around the perimeter
                 float phase = fract((angle / 6.2831853) + (iTime * mix(0.18, 0.55, iThinking)));
-                float3 color = mix(GEMINI_BLUE, GEMINI_VIOLET, smoothstep(0.00, 0.25, phase));
-                color = mix(color, GEMINI_CORAL,  smoothstep(0.25, 0.50, phase));
-                color = mix(color, GEMINI_CYAN,   smoothstep(0.50, 0.75, phase));
-                color = mix(color, GEMINI_BLUE,   smoothstep(0.75, 1.00, phase));
+                float3 color = mix(COLOR_BLUE, COLOR_VIOLET, smoothstep(0.00, 0.25, phase));
+                color = mix(color, COLOR_CORAL,  smoothstep(0.25, 0.50, phase));
+                color = mix(color, COLOR_CYAN,   smoothstep(0.50, 0.75, phase));
+                color = mix(color, COLOR_BLUE,   smoothstep(0.75, 1.00, phase));
 
-                // Subtle white-hot core highlight right along the physical glass edge
+                // Edge core highlight
                 color = mix(color, float3(1.0, 1.0, 1.0), coreGlow * 0.38 * iIntensity);
 
                 float alpha = clamp(combinedGlow, 0.0, 1.0);
@@ -219,10 +215,6 @@ class Shimmer(context: Context) : View(context) {
         }
     }
 
-    /**
-     * Activates the Gemini Edge Glow with a high-energy trigger surge,
-     * settling into audio-reactive breathing, and cleanly auto-hiding after 2 seconds.
-     */
     fun startShimmer() {
         stopShimmer()
         removeCallbacks(autoStopRunnable)
@@ -232,10 +224,9 @@ class Shimmer(context: Context) : View(context) {
         audioLevel = 0f
         isThinking = false
 
-        // Automatically hide and release GPU after 2 seconds from activation
+        // Hide after 2 seconds
         postDelayed(autoStopRunnable, 2000L)
 
-        // Continuous high-performance time driver (60 - 120 FPS)
         loopAnimator = ValueAnimator.ofFloat(0f, 62.83185f).apply {
             duration = 20000L
             repeatCount = ValueAnimator.INFINITE
@@ -248,9 +239,7 @@ class Shimmer(context: Context) : View(context) {
         }
         loopAnimator?.start()
 
-        // Three-Phase State Choreography:
-        // 1. Trigger Surge: rapid inward expansion (0ms -> 300ms)
-        // 2. Settles to perimeter breathing
+        // Fade in
         intensityAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 320L
             interpolator = DecelerateInterpolator()
@@ -266,10 +255,6 @@ class Shimmer(context: Context) : View(context) {
         intensityAnimator?.start()
     }
 
-    /**
-     * Smoothly modulates glow thickness in real-time with microphone RMS energy
-     * while active during the initial activation window.
-     */
     fun setAudioLevel(normalizedLevel: Float) {
         if (visibility != VISIBLE || intensity <= 0.01f) return
         val target = normalizedLevel.coerceIn(0f, 1f)
@@ -277,9 +262,6 @@ class Shimmer(context: Context) : View(context) {
         invalidate()
     }
 
-    /**
-     * Updates thinking mode if the gradient is active.
-     */
     fun setThinking(thinking: Boolean) {
         isThinking = thinking
         if (visibility == VISIBLE && intensity > 0.01f) {
@@ -287,10 +269,6 @@ class Shimmer(context: Context) : View(context) {
         }
     }
 
-    /**
-     * Gracefully fades out the edge glow with an accelerating edge suction effect
-     * that retracts the light right into the bezel, releasing the GPU loop.
-     */
     fun stopShimmer() {
         removeCallbacks(autoStopRunnable)
         intensityAnimator?.cancel()

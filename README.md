@@ -23,7 +23,6 @@ Conversations are session-scoped: context is kept in a local SQLite database whi
 - **Tool execution** — launches apps, toggles flashlight, controls volume, opens settings panels, sets timers/alarms, searches local files, opens Play Store and URLs, searches Google
 - **Voice output** — responds aloud through Google Speech Services with selectable voices (Emma, Ava, Liam, Oliver, Chloe)
 - **Screen-edge glow** — AGSL GPU shader that briefly lights up the screen perimeter on activation, using the device's actual hardware corner radii; auto-hides after 2 seconds
-- **Silence and phantom phrase filtering** — rejects ambient noise below a dynamic RMS threshold and drops common acoustic model hallucinations (e.g. "thank you", "please subscribe") on short recordings
 - **No heavy dependencies** — the only Gradle dependency is `androidx.core:core-ktx`. Everything else is Android platform APIs and the native Needle engine
 
 ## Getting started

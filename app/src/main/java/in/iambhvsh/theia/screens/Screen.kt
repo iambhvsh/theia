@@ -58,16 +58,6 @@ import android.widget.Toast
 import java.util.UUID
 import java.util.concurrent.Executors
 
-/**
- * Theia: Minimalist Google Gemini Overlay Architecture.
- *
- * Designed per user specifications:
- * - By default: ONLY the clean floating bottom pill is shown (no response container by default).
- * - No plus icon and no icon beside mic.
- * - Response container and Minimise button appear ONLY when an actual AI response is generated.
- * - If no speech is heard ("I didn't hear anything"), it silently resets without showing any card.
- * - Instant speech cancellation as soon as the user closes or exits the sheet.
- */
 class Screen : Activity() {
     private val exec = Executors.newSingleThreadExecutor()
     private lateinit var actions: Actions
@@ -169,7 +159,7 @@ class Screen : Activity() {
         }
         rootLayout.addView(backdropView)
 
-        // 1.5 Gemini Full-Screen Edge Shimmer & Neural Glow
+        // Edge shimmer view
         shimmerView = Shimmer(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -282,7 +272,7 @@ class Screen : Activity() {
         }
         overlayContainer.addView(contextRow)
 
-        // --- ROW D: Floating Gemini Bottom Pill (Visible by default) ---
+        // Bottom input pill container
         inputCardContainer = buildInputCardContainer(density)
         overlayContainer.addView(inputCardContainer)
 
@@ -320,7 +310,7 @@ class Screen : Activity() {
             }
         }
 
-        // Automatic listen & Gemini edge shimmer on launch
+        // Start listening on launch
         window.decorView.post {
             shimmerView.startShimmer()
             listen()
@@ -403,7 +393,7 @@ class Screen : Activity() {
     }
 
     /**
-     * Builds the Gemini response card (#131314 dark charcoal with drag handle and action toolbar).
+     * Builds the response card with drag handle and action toolbar.
      */
     private fun buildResponseCard(density: Float): LinearLayout {
         val card = LinearLayout(this).apply {
@@ -693,10 +683,8 @@ class Screen : Activity() {
     }
 
     /**
-     * Builds the clean Google Gemini bottom pill:
-     * - NO plus icon
-     * - NO icon beside mic
-     * - Only prompt text + Mic (or Send when typing)
+     * Builds the bottom input pill:
+     * Prompt text + mic icon (or send icon when typing).
      */
     private fun buildInputCardContainer(density: Float): FrameLayout {
         val container = FrameLayout(this).apply {
@@ -710,13 +698,13 @@ class Screen : Activity() {
             layoutParams = lp
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(0xFF1E1F20.toInt()) // #1E1F20 Surface
+                setColor(0xFF1E1F20.toInt())
                 cornerRadius = 32f * density
             }
             elevation = 8f * density
         }
 
-        // --- 1. COLLAPSED INPUT ROW: [ "Ask Gemini" ] ... [ Mic ] ---
+        // --- 1. Collapsed input row ---
         collapsedInputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -860,7 +848,7 @@ class Screen : Activity() {
             visibility = View.GONE
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(0xFF3084FF.toInt()) // Gemini Electric Blue
+                setColor(0xFF3084FF.toInt())
             }
             val slp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt())
             layoutParams = slp
@@ -1238,7 +1226,7 @@ class Screen : Activity() {
             typeface = Typeface.DEFAULT_BOLD
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(0xFF3084FF.toInt()) // Gemini Electric Blue
+                setColor(0xFF3084FF.toInt())
                 cornerRadius = 24f * density
             }
             val slp = LinearLayout.LayoutParams(

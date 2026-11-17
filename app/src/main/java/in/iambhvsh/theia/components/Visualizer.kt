@@ -14,12 +14,8 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Authentic Google Gemini Live Waveform & Sparkle Visualizer.
- *
- * Reengineered directly from Google Gemini Live (`ls_gemini_live`):
- * - 3-bar signature Gemini Live icon in dark theme (#C4C7C5 in IDLE)
- * - Dynamic undulating gradient waveform (#3084FF Electric Blue -> #7C4DFF Iris Purple -> #CD9AEC Lilac) during LISTENING & SPEAKING
- * - Rotating pulsing Gemini 4-point sparkle during THINKING
+ * Audio waveform and sparkle indicator view.
+ * Displays a 3-bar waveform during listening/speaking and a 4-point star while thinking.
  */
 class Visualizer @JvmOverloads constructor(
     context: Context,
@@ -37,14 +33,13 @@ class Visualizer @JvmOverloads constructor(
     private val wavePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val sparklePaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    // Gemini Brand Gradient: Blue -> Iris -> Lilac
-    private val geminiColors = intArrayOf(
-        0xFF3084FF.toInt(), // Electric Blue
-        0xFF078EFB.toInt(), // Cyan
-        0xFF7C4DFF.toInt(), // Iris Purple
-        0xFFCD9AEC.toInt()  // Lilac
+    private val gradientColors = intArrayOf(
+        0xFF3084FF.toInt(),
+        0xFF078EFB.toInt(),
+        0xFF7C4DFF.toInt(),
+        0xFFCD9AEC.toInt()
     )
-    private val geminiPositions = floatArrayOf(0.0f, 0.3f, 0.7f, 1.0f)
+    private val gradientPositions = floatArrayOf(0.0f, 0.3f, 0.7f, 1.0f)
 
     @Volatile
     var mode: Mode = Mode.IDLE
@@ -83,10 +78,10 @@ class Visualizer @JvmOverloads constructor(
 
         when (mode) {
             Mode.IDLE, Mode.LISTENING, Mode.SPEAKING -> {
-                drawGeminiWaveform(canvas, cx, cy, density, elapsedSec)
+                drawWaveform(canvas, cx, cy, density, elapsedSec)
             }
             Mode.THINKING -> {
-                drawGeminiSparkle(canvas, cx, cy, density, elapsedSec)
+                drawSparkle(canvas, cx, cy, density, elapsedSec)
             }
         }
 
@@ -94,18 +89,13 @@ class Visualizer @JvmOverloads constructor(
         postInvalidateOnAnimation()
     }
 
-    /**
-     * Draws the signature Google Gemini Live 3-bar dynamic audio waveform.
-     */
-    private fun drawGeminiWaveform(
+    private fun drawWaveform(
         canvas: Canvas,
         cx: Float,
         cy: Float,
         density: Float,
         elapsedSec: Float
     ) {
-        // 3 bars matching Google Gemini Live icon:
-        // Left: 14dp, Center: 24dp, Right: 10dp
         val barCount = 3
         val barWidth = 3.2f * density
         val spacing = 7.0f * density
@@ -117,14 +107,13 @@ class Visualizer @JvmOverloads constructor(
 
         if (mode == Mode.IDLE) {
             wavePaint.shader = null
-            wavePaint.color = 0xFFC4C7C5.toInt() // Exact Gemini theme icon grey
+            wavePaint.color = 0xFFC4C7C5.toInt()
         } else {
-            // Linear gradient applied vertically
             wavePaint.shader = LinearGradient(
                 cx - 15f * density, cy - 16f * density,
                 cx + 15f * density, cy + 16f * density,
-                geminiColors,
-                geminiPositions,
+                gradientColors,
+                gradientPositions,
                 Shader.TileMode.CLAMP
             )
         }
@@ -169,10 +158,7 @@ class Visualizer @JvmOverloads constructor(
         }
     }
 
-    /**
-     * Draws the rotating, pulsing Google Gemini 4-point Sparkle star during thinking/loading.
-     */
-    private fun drawGeminiSparkle(
+    private fun drawSparkle(
         canvas: Canvas,
         cx: Float,
         cy: Float,
@@ -181,8 +167,7 @@ class Visualizer @JvmOverloads constructor(
     ) {
         canvas.save()
 
-        // Rotating gradient sparkle
-        val rotAngle = elapsedSec * 90f // 90 deg / second
+        val rotAngle = elapsedSec * 90f
         canvas.rotate(rotAngle, cx, cy)
 
         val pulse = 1.0f + 0.15f * sin(elapsedSec * 5f)
@@ -192,12 +177,11 @@ class Visualizer @JvmOverloads constructor(
         sparklePaint.shader = LinearGradient(
             cx - outerRadius, cy - outerRadius,
             cx + outerRadius, cy + outerRadius,
-            geminiColors,
-            geminiPositions,
+            gradientColors,
+            gradientPositions,
             Shader.TileMode.CLAMP
         )
 
-        // Construct 4-point star path (Gemini sparkle geometry)
         val path = Path()
         for (i in 0 until 8) {
             val angle = i * Math.PI.toFloat() / 4f

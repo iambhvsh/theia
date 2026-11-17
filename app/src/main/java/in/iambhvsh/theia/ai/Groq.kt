@@ -318,7 +318,7 @@ object Groq {
         val messages = JSONArray()
         val sysContext = getSystemContext(ctx)
 
-        // System prompt instructing conversational brilliance, empathy, and tool coordination
+        // System prompt
         val sysMsg = JSONObject().apply {
             put("role", "system")
             put("content", """
