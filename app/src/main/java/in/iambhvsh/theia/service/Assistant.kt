@@ -8,9 +8,7 @@ class Assistant : VoiceInteractionService() {
     override fun onReady() {
         super.onReady()
         // Disable AssistStructure and screenshot disclosure flash (white border box)
-        setDisabledShowContext(
-            VoiceInteractionSession.SHOW_WITH_ASSIST or
+        disabledShowContext = VoiceInteractionSession.SHOW_WITH_ASSIST or
             VoiceInteractionSession.SHOW_WITH_SCREENSHOT
-        )
     }
 }

@@ -62,17 +62,21 @@ class Actions(private val a: Activity) {
 
         var hit: android.content.pm.ResolveInfo? = null
         for (target in searchTargets) {
-            if (target == "x") {
-                // Exact label match or twitter package only; never substring match "x"
-                hit = apps.firstOrNull { label(it) == "x" || pkg(it) == "com.twitter.android" }
-            } else if (target == "twitter") {
-                hit = apps.firstOrNull { label(it) == "twitter" || pkg(it) == "com.twitter.android" }
-                    ?: apps.firstOrNull { label(it).startsWith("twitter") }
-                    ?: apps.firstOrNull { label(it).contains("twitter") }
-            } else {
-                hit = apps.firstOrNull { label(it) == target }
-                    ?: apps.firstOrNull { label(it).startsWith(target) }
-                    ?: apps.firstOrNull { target.length >= 3 && label(it).contains(target) }
+            hit = when (target) {
+                "x" -> {
+                    // Exact label match or twitter package only; never substring match "x"
+                    apps.firstOrNull { label(it) == "x" || pkg(it) == "com.twitter.android" }
+                }
+                "twitter" -> {
+                    apps.firstOrNull { label(it) == "twitter" || pkg(it) == "com.twitter.android" }
+                        ?: apps.firstOrNull { label(it).startsWith("twitter") }
+                        ?: apps.firstOrNull { label(it).contains("twitter") }
+                }
+                else -> {
+                    apps.firstOrNull { label(it) == target }
+                        ?: apps.firstOrNull { label(it).startsWith(target) }
+                        ?: apps.firstOrNull { target.length >= 3 && label(it).contains(target) }
+                }
             }
             if (hit != null) break
         }
