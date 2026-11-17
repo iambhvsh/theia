@@ -50,10 +50,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# OS metadata
+# OS & editor metadata
 .DS_Store
 Thumbs.db
 ehthumbs.db
+.vscode/
+.agents/
+skills-lock.json
 
 # Log files
 *.log
