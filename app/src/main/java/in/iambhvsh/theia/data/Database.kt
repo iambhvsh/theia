@@ -1,4 +1,4 @@
-package `in`.iambhvsh.theia
+package `in`.iambhvsh.theia.data
 
 import android.content.ContentValues
 import android.content.Context

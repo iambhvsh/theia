@@ -1,4 +1,18 @@
-package `in`.iambhvsh.theia
+package `in`.iambhvsh.theia.screens
+
+import `in`.iambhvsh.theia.R
+import `in`.iambhvsh.theia.components.Shimmer
+import `in`.iambhvsh.theia.components.Visualizer
+import `in`.iambhvsh.theia.tools.Actions
+import `in`.iambhvsh.theia.tools.Call
+import `in`.iambhvsh.theia.data.Database
+import `in`.iambhvsh.theia.data.Message
+import `in`.iambhvsh.theia.ai.Groq
+import `in`.iambhvsh.theia.ai.Engine
+import `in`.iambhvsh.theia.audio.Recorder
+import `in`.iambhvsh.theia.audio.Speaker
+import `in`.iambhvsh.theia.audio.VoiceItem
+import `in`.iambhvsh.theia.tools.Parser
 
 import android.Manifest
 import android.animation.LayoutTransition

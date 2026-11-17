@@ -1,4 +1,4 @@
-package `in`.iambhvsh.theia
+package `in`.iambhvsh.theia.service
 
 import android.content.Context
 import android.content.Intent
@@ -7,6 +7,7 @@ import android.service.voice.VoiceInteractionSession
 import android.service.voice.VoiceInteractionSessionService
 import android.util.Log
 import android.view.View
+import `in`.iambhvsh.theia.screens.Screen
 
 class Sessions : VoiceInteractionSessionService() {
     override fun onNewSession(args: Bundle?): VoiceInteractionSession = Session(this)

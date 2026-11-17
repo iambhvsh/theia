@@ -1,4 +1,4 @@
-package `in`.iambhvsh.theia
+package `in`.iambhvsh.theia.audio
 
 import android.content.Context
 import android.media.AudioManager

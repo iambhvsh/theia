@@ -1,4 +1,4 @@
-package `in`.iambhvsh.theia
+package `in`.iambhvsh.theia.tools
 
 import android.app.Activity
 import android.content.ActivityNotFoundException

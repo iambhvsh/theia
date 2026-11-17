@@ -1,4 +1,4 @@
-package `in`.iambhvsh.theia
+package `in`.iambhvsh.theia.ai
 
 import android.content.Context
 import android.content.Intent
@@ -6,6 +6,8 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Build
 import android.util.Log
+import `in`.iambhvsh.theia.data.Message
+import `in`.iambhvsh.theia.tools.Call
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader

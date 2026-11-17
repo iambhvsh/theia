@@ -1,4 +1,4 @@
-package `in`.iambhvsh.theia
+package `in`.iambhvsh.theia.components
 
 import android.content.Context
 import android.graphics.Canvas

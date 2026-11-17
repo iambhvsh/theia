@@ -24,7 +24,7 @@
         android:usesCleartextTraffic="false">
 
         <activity
-            android:name=".Screen"
+            android:name=".screens.Screen"
             android:exported="true"
             android:launchMode="singleTask"
             android:showWhenLocked="true"
@@ -44,9 +44,26 @@
             </intent-filter>
         </activity>
 
+        <activity-alias
+            android:name=".Screen"
+            android:targetActivity=".screens.Screen"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
 
         <service
-            android:name=".Assistant"
+            android:name=".service.Assistant"
             android:exported="true"
             android:permission="android.permission.BIND_VOICE_INTERACTION">
             <meta-data
@@ -57,10 +74,10 @@
             </intent-filter>
         </service>
         <service
-            android:name=".Sessions"
+            android:name=".service.Sessions"
             android:exported="true"
             android:permission="android.permission.BIND_VOICE_INTERACTION" />
-        <service android:name=".Recognizer" android:exported="true">
+        <service android:name=".service.Recognizer" android:exported="true">
             <intent-filter>
                 <action android:name="android.speech.RecognitionService" />
             </intent-filter>

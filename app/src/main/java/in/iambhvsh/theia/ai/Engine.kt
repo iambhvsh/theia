@@ -1,4 +1,4 @@
-package `in`.iambhvsh.theia
+package `in`.iambhvsh.theia.ai
 
 import android.content.Context
 import java.io.File

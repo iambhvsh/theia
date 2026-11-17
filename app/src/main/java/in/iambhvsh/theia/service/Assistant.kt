@@ -1,4 +1,4 @@
-package `in`.iambhvsh.theia
+package `in`.iambhvsh.theia.service
 
 import android.service.voice.VoiceInteractionService
 import android.service.voice.VoiceInteractionSession

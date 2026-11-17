@@ -95,4 +95,35 @@ Java_in_iambhvsh_theia_Engine_nativeReset(JNIEnv*, jobject) {
     needle_reset();
 }
 
+// Subpackage aliases for in.iambhvsh.theia.ai.Engine
+JNIEXPORT jint JNICALL
+Java_in_iambhvsh_theia_ai_Engine_nativeLoad(JNIEnv* e, jobject thiz, jstring path) {
+    return Java_in_iambhvsh_theia_Engine_nativeLoad(e, thiz, path);
+}
+
+JNIEXPORT jint JNICALL
+Java_in_iambhvsh_theia_ai_Engine_nativeModels(JNIEnv* e, jobject thiz) {
+    return Java_in_iambhvsh_theia_Engine_nativeModels(e, thiz);
+}
+
+JNIEXPORT jint JNICALL
+Java_in_iambhvsh_theia_ai_Engine_nativeInit(JNIEnv* e, jobject thiz, jbyteArray tools) {
+    return Java_in_iambhvsh_theia_Engine_nativeInit(e, thiz, tools);
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_in_iambhvsh_theia_ai_Engine_nativeTranscribe(JNIEnv* e, jobject thiz, jfloatArray pcm) {
+    return Java_in_iambhvsh_theia_Engine_nativeTranscribe(e, thiz, pcm);
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_in_iambhvsh_theia_ai_Engine_nativeComplete(JNIEnv* e, jobject thiz, jbyteArray text) {
+    return Java_in_iambhvsh_theia_Engine_nativeComplete(e, thiz, text);
+}
+
+JNIEXPORT void JNICALL
+Java_in_iambhvsh_theia_ai_Engine_nativeReset(JNIEnv* e, jobject thiz) {
+    Java_in_iambhvsh_theia_Engine_nativeReset(e, thiz);
+}
+
 }  // extern "C"

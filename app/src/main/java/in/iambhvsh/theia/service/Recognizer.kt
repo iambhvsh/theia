@@ -1,4 +1,4 @@
-package `in`.iambhvsh.theia
+package `in`.iambhvsh.theia.service
 
 import android.content.Intent
 import android.speech.RecognitionService

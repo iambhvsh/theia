@@ -1,4 +1,4 @@
-package `in`.iambhvsh.theia
+package `in`.iambhvsh.theia.tools
 
 import org.json.JSONArray
 import org.json.JSONObject
