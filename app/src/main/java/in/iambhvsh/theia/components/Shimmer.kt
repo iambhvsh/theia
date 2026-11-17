@@ -26,7 +26,7 @@ class Shimmer(context: Context) : View(context) {
 
     // --- AGSL Shader Definition (Android 13+ / API 33+) ---
     companion object {
-        private const val GEMINI_AGSL = """
+        private const val SHIMMER_AGSL = """
             uniform float2 iResolution;
             uniform float4 iCornerRadii; // topRight, bottomRight, topLeft, bottomLeft (in px)
             uniform float iTime;
@@ -125,7 +125,7 @@ class Shimmer(context: Context) : View(context) {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             try {
-                runtimeShader = RuntimeShader(GEMINI_AGSL)
+                runtimeShader = RuntimeShader(SHIMMER_AGSL)
                 shaderPaint.shader = runtimeShader
             } catch (e: Throwable) {
                 android.util.Log.e("TheiaShimmer", "RuntimeShader compile failed, falling back: ${e.message}")
