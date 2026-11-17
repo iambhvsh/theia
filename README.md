@@ -1,202 +1,170 @@
 # Theia
 
-A fast, lightweight voice assistant for Android designed around a floating bottom pill interface and low-latency response times.
+A voice assistant for Android that registers as the system default digital assistant. It listens when you swipe from the corner or long-press home, transcribes speech on-device, reasons through a cloud LLM, and speaks the answer back — all through a floating bottom-sheet overlay with no launcher icon clutter.
 
-Theia runs as a system-level Digital Assistant (`VoiceInteractionService`), triggering instantly from corner swipes or power-button gestures. It handles queries through a hybrid setup: low-latency cloud inference via Groq (`qwen/qwen3.8-27b`) when configured, backed by an embedded on-device engine (Needle 3 and Whistle) when offline.
+## What it does
 
----
+Theia replaces Google Assistant on your phone. You trigger it the same way (corner swipe, power button hold), and it appears as a dark floating pill at the bottom of your screen. Speak a command or question, and it:
 
-## How It Works
+1. Transcribes your voice locally using an embedded Whistle acoustic model (`whistle.cact`, 16 MB)
+2. Sends the transcript to [Groq](https://groq.com) for reasoning and tool-call decisions (model: `qwen/qwen3.8-27b`)
+3. Executes device actions directly — open apps, toggle flashlight, set alarms, adjust volume, search files
+4. Speaks a short answer aloud using Google Speech Services TTS
 
-1. **Activation**: Triggered via Android's default assistant gesture or home-screen launch. A custom AGSL edge shader traces the curved corners of your physical screen while listening.
-2. **Audio Processing**: Captures 16 kHz mono audio using Android's `VOICE_RECOGNITION` audio source. An adaptive Voice Activity Detector (VAD) monitors ambient noise, records with a 500 ms pre-roll buffer, and normalizes audio peaks before inference. Short ambient noise or silence is dropped to prevent phantom transcriptions.
-3. **Reasoning & Tool Calling**:
-   - **Cloud**: Transcribes and reasons using Groq (`qwen/qwen3.8-27b`, ~40–80 ms latency). Automatically falls back to `openai/gpt-oss-20b` (low reasoning effort) if rate limits occur.
-   - **Local**: When offline or unconfigured, falls back to the embedded C++ engine running the Whistle acoustic model (`whistle.cact`) and Needle 3 LLM (`needle3.cact`).
-4. **Execution**: System-level tools execute directly on the phone (flashlight, volume, installed app launching, Play Store queries, settings panels, alarms, timers, and storage file search).
-5. **Speech Synthesis**: Speaks responses aloud using Google Speech Services neural voices (Emma, Ava, Liam, Oliver, or offline Chloe). Spoken answers are strictly concise (1–2 sentences, under 35 words).
-6. **Session-Scoped Memory**: Multi-turn conversation context is stored in a local SQLite database for the duration of the session and automatically discarded when Theia closes.
+If Groq is unreachable or no API key is configured, Theia falls back to an embedded Needle 3 language model (`needle3.cact`, 34 MB) for both reasoning and tool calls, fully offline.
 
----
+Conversations are session-scoped: context is kept in a local SQLite database while Theia is open, and deleted when you close it.
 
-## Capabilities & Example Commands
+## Features
 
-| Category | Example Spoken Queries | Action |
-| :--- | :--- | :--- |
-| **App Launching** | *"Open Instagram"*, *"Launch Spotify"*, *"Open Twitter"* | Launches installed application via `PackageManager` with smart alias resolution. |
-| **Play Store Fallback** | *"Download Twitter"*, *"Get Duolingo on Play Store"* | Opens Google Play Store search when an app is missing or requested. |
-| **Flashlight** | *"Turn on flashlight"*, *"Lumos"*, *"Turn off torch"*, *"Nox"* | Toggles phone camera flash via `CameraManager`. |
-| **Volume Control** | *"Turn the volume up"*, *"Set volume to 50%"*, *"Mute media"* | Adjusts music audio stream via `AudioManager`. |
-| **System Settings** | *"Open Wi-Fi settings"*, *"Bluetooth settings"*, *"Display settings"* | Deep-links directly to specific Android system settings panels. |
-| **Timers & Alarms** | *"Set a timer for 10 minutes"*, *"Alarm at 7:30 AM"* | Dispatches system intents to the default clock application. |
-| **File Search** | *"Search report.pdf"*, *"Find invoice.docx"* | Traverses public external storage and opens matches using `FileProvider`. |
-| **Device & Time Context** | *"What time is it?"*, *"What's my battery level?"*, *"What's today's date?"* | Pulls current system time, battery state, and device telemetry. |
-| **General Knowledge** | *"Why is the sky blue?"*, *"Explain relativity simply"* | Generates a punchy, spoken-friendly summary in under 35 words. |
+- **System-level assistant** — registers as `VoiceInteractionService`, triggered by Android's native assistant gesture
+- **On-device transcription** — speech is always transcribed locally via Whistle; audio never leaves the phone
+- **Cloud reasoning with local fallback** — Groq API for fast inference, Needle 3 on-device when offline
+- **Tool execution** — launches apps, toggles flashlight, controls volume, opens settings panels, sets timers/alarms, searches local files, opens Play Store and URLs, searches Google
+- **Voice output** — responds aloud through Google Speech Services with selectable voices (Emma, Ava, Liam, Oliver, Chloe)
+- **Screen-edge glow** — AGSL GPU shader that traces the physical corner curvature of your display while listening
+- **Hallucination filtering** — silence and common Whisper phantom phrases ("thank you", "please subscribe") are detected and dropped before they reach the LLM
+- **No heavy dependencies** — the only Gradle dependency is `androidx.core:core-ktx`. Everything else is Android platform APIs and the native Needle engine
 
----
-
-## Architecture
-
-```
-User Voice / Tap
-       │
-       ▼
-Recorder.kt (16 kHz PCM + VAD + Pre-roll Buffer + Peak Gate)
-       │
-       ▼
-Screen.kt (Orchestrator) ─── AGSL Shimmer & Visualizer
-       │
-       ├── Cloud Path (Groq API Key configured):
-       │     ├── STT: Whisper-Large-V3
-       │     ├── LLM: qwen/qwen3.8-27b (Fallback: gpt-oss-20b)
-       │     └── SQLite Session Memory: theia.db
-       │
-       └── Offline Fallback (Local C++ JNI):
-             ├── STT: whistle.cact (Whistle Acoustic Model)
-             └── LLM: needle3.cact (Needle 3 Language Model)
-       │
-       ├── Tool Calls ────────► Actions.kt (Torch, Volume, Apps, Settings, Alarms, Files)
-       │
-       ▼
-Speaker.kt (Google Speech Services TTS) ───► Spoken Audio Output
-```
-
----
-
-## Project Structure
-
-```
-theia/
-├── app/
-│   ├── src/main/
-│   │   ├── java/in/iambhvsh/theia/
-│   │   │   ├── ai/
-│   │   │   │   ├── Engine.kt         # JNI bridge to embedded Cactus Needle C++ engine
-│   │   │   │   └── Groq.kt           # Groq API client, model routing, system context, tool schemas
-│   │   │   ├── audio/
-│   │   │   │   ├── Recorder.kt       # AudioRecord capture, dynamic noise floor, VAD, gain normalizer
-│   │   │   │   └── Speaker.kt        # Google Speech Services TTS, voice presets, fallback handling
-│   │   │   ├── components/
-│   │   │   │   ├── Shimmer.kt        # AGSL GPU runtime shader for curved edge glow
-│   │   │   │   └── Visualizer.kt     # Multi-mode signature audio waveform & sparkle view
-│   │   │   ├── data/
-│   │   │   │   └── Database.kt       # SQLite session-scoped conversational history store
-│   │   │   ├── screens/
-│   │   │   │   └── Screen.kt         # Minimalist bottom pill, response card, settings view, input coordinator
-│   │   │   ├── service/
-│   │   │   │   ├── Assistant.kt      # Android VoiceInteractionService entry point
-│   │   │   │   ├── Recognizer.kt     # Android SpeechRecognizer service placeholder
-│   │   │   │   └── Session.kt        # VoiceInteractionSession & gesture launch coordinator
-│   │   │   └── tools/
-│   │   │       ├── Actions.kt        # Hardware controls (torch, volume, apps, settings, alarms, files)
-│   │   │       └── Parser.kt         # Tool-call parser and arguments normalizer
-│   │   ├── cpp/
-│   │   │   ├── CMakeLists.txt        # NDK build configuration (16 KB page-size aligned)
-│   │   │   ├── jni.cpp               # C++ JNI bindings for libneedle
-│   │   │   └── engine/               # Needle headers and libneedle.a static library
-│   │   ├── assets/
-│   │   │   ├── needle3.cact          # Embedded Needle 3 LLM weights (34 MB)
-│   │   │   └── whistle.cact          # Embedded Whistle STT acoustic model (16 MB)
-│   │   └── res/                      # Android drawables, styles, and XML configs
-├── scripts/
-│   ├── setup.sh                      # Unified cross-platform engine asset downloader
-│   ├── setup_macos.sh                # macOS setup script
-│   ├── setup_linux.sh                # Linux setup script
-│   ├── setup_windows.ps1             # Windows PowerShell setup script
-│   └── setup_windows.bat             # Windows batch setup script
-├── build.gradle.kts
-├── settings.gradle.kts
-└── README.md
-```
-
----
-
-## Getting Started
+## Getting started
 
 ### Prerequisites
 
-- **Java Development Kit**: JDK 17
-- **Android SDK**: API level 35 (Build-Tools 34+)
-- **Android NDK**: Version `27.0.12077973`
-- **Device**: ARM64 Android device running Android 11+ (API 30+) with USB debugging enabled
-- **Python**: 3.9+ (used by the setup scripts to fetch binary assets)
+- JDK 17
+- Android SDK with API level 35, Build-Tools 34+, NDK `27.0.12077973`
+- Python 3.9+ (the setup script uses it to install the `cactus-needle` Python package, which downloads the native library and model files)
+- An ARM64 Android device running Android 11 or later, with USB debugging enabled
 
----
-
-### 1. Clone the Repository
+### Clone and set up
 
 ```bash
 git clone https://github.com/iambhvsh/theia.git
 cd theia
 ```
 
----
+Run the setup script for your platform. It installs the `cactus-needle` pip package in a local virtualenv and uses its `needle` CLI to download `libneedle.a`, `whistle.cact`, and `needle3.cact` into the right directories:
 
-### 2. Fetch Engine Libraries & Model Weights
-
-Run the setup script for your platform to download the precompiled `libneedle.a` static library and model files (`whistle.cact`, `needle3.cact`):
-
-**macOS / Linux:**
 ```bash
+# macOS or Linux
 ./scripts/setup.sh
-```
 
-**Windows (PowerShell):**
-```powershell
+# Windows (PowerShell)
 .\scripts\setup_windows.ps1
 ```
 
-**Windows (Command Prompt):**
-```cmd
-.\scripts\setup_windows.bat
-```
-
----
-
-### 3. Build & Install
-
-Connect your Android device via USB and run:
+### Build and install
 
 ```bash
 ./gradlew installDebug
 ```
 
-Or open the project in Android Studio and deploy to your connected device.
+Or open the project in Android Studio and deploy to a connected device.
 
----
+### Configure cloud inference
 
-### 4. Configuration (Groq Cloud Inference)
+Theia works out of the box with the embedded on-device models. For faster, higher-quality responses:
 
-To enable cloud reasoning with Qwen 2.5:
+1. Open Theia on your phone
+2. Long-press the microphone icon, or tap **⋮** on a response card and select **Settings**
+3. Enter a Groq API key (free at [console.groq.com/keys](https://console.groq.com/keys))
+4. Tap **Save Settings**
 
-1. Launch Theia.
-2. Long-press the microphone icon on the floating pill, or tap the **⋮** menu on any response card and select **Settings**.
-3. Enter your Groq API key (available at [console.groq.com](https://console.groq.com/keys)).
-4. Tap **Save Settings**.
+You can also change the LLM model name and select a different TTS voice from this screen.
 
-You can also switch the assistant voice preset (Emma, Ava, Liam, Oliver, Chloe) or customize the default model name from this screen.
+### Set as default assistant (optional)
 
----
+Go to Android **Settings → Apps → Default apps → Digital assistant app** and select **Theia**.
 
-### 5. Set Theia as Default Digital Assistant (Optional)
+## Project structure
 
-To trigger Theia via your device's native assistant shortcut (corner swipe, home button long-press, or power-button gesture):
+```
+app/src/main/
+├── java/in/iambhvsh/theia/
+│   ├── ai/
+│   │   ├── Engine.kt          # JNI bridge to the native Needle engine
+│   │   └── Groq.kt            # Groq chat completions client, tool schemas, system prompt
+│   ├── audio/
+│   │   ├── Recorder.kt        # 16 kHz PCM capture, adaptive VAD, pre-roll buffer, peak normalization
+│   │   └── Speaker.kt         # Google Speech Services TTS wrapper, voice presets, offline fallback
+│   ├── components/
+│   │   ├── Shimmer.kt         # AGSL RuntimeShader — rounded-box SDF edge glow, voice-reactive
+│   │   └── Visualizer.kt      # 3-bar waveform (listening/speaking) and rotating sparkle (thinking)
+│   ├── data/
+│   │   └── Database.kt        # SQLite session-scoped message store
+│   ├── screens/
+│   │   └── Screen.kt          # Main UI — floating pill, response card, settings page, query orchestration
+│   ├── service/
+│   │   ├── Assistant.kt       # VoiceInteractionService entry point
+│   │   ├── Recognizer.kt      # Placeholder RecognitionService (required by voice_interaction.xml)
+│   │   └── Session.kt         # VoiceInteractionSession — wake gesture handler, launches Screen
+│   └── tools/
+│       ├── Actions.kt         # Device action executors (apps, torch, volume, settings, alarms, files, URLs)
+│       └── Parser.kt          # Tool-call JSON parser
+├── cpp/
+│   ├── jni.cpp                # C++ JNI bindings for libneedle
+│   ├── CMakeLists.txt         # NDK build config (16 KB page-size aligned for Android 15+)
+│   └── engine/                # needle.h and libneedle.a (downloaded by setup script)
+├── assets/
+│   ├── needle3.cact           # Needle 3 LLM weights (34 MB)
+│   └── whistle.cact           # Whistle STT acoustic model (16 MB)
+└── res/                       # Drawables, styles, XML configs
+```
 
-1. Open Android **Settings**.
-2. Navigate to **Apps** > **Default apps** > **Digital assistant app**.
-3. Tap **Default digital assistant app** and select **Theia**.
+## Tools
 
----
+These are the device actions Theia can execute, either through Groq tool-calling or through the local Needle engine's function-call output:
 
-## Technical Details
+| Tool | What it does |
+|---|---|
+| `open_app` | Launches an installed app by name, with alias matching (e.g., "Twitter" matches the X app) |
+| `open_play_store` | Opens Google Play Store search for an app |
+| `open_url` | Opens a URL in the browser |
+| `search_web` | Opens a Google search |
+| `control_flashlight` | Toggles the camera flash on/off |
+| `adjust_volume` | Raises, lowers, sets, or mutes media volume |
+| `open_settings` | Deep-links to a system settings panel (Wi-Fi, Bluetooth, Display, Sound, Apps, Battery) |
+| `set_timer` | Creates a countdown timer via the system clock app |
+| `set_alarm` | Sets a clock alarm at a specific time |
+| `search_files` | Traverses external storage, matches filenames, and opens results via FileProvider |
 
-- **AGSL Screen Border Shader**: On Android 13+ (API 33+), Theia renders its screen perimeter glow using an AGSL RuntimeShader. It queries `WindowInsets.getRoundedCorner` to pull the physical glass curvature of the phone's corners and runs an Inigo Quilez 2D rounded-box signed distance field (SDF) to keep the gradient bound to the device's bezels.
-- **Microphone VAD & Silence Rejection**: The audio pipeline continuously samples ambient noise floor. Recordings with peak amplitude below `0.035` are discarded before reaching the transcription engine, cutting out common Whisper background hallucinations.
-- **Android 15 16 KB Page Size**: The native library links with `-Wl,-z,max-page-size=16384` to ensure forward compatibility with 16 KB memory page kernels on upcoming Android platforms.
-- **Transient Memory**: Rather than accumulating indefinite chat logs, conversation history is scoped strictly to the current session (`sessionId`) and purged from SQLite on activity dismiss.
+When Groq is unavailable, the on-device Needle engine supports a subset: `open_app`, `set_timer`, `set_alarm`, and `search_files`.
 
----
+## How it works
+
+```
+Voice Input
+    │
+    ▼
+Recorder.kt ── 16 kHz mono PCM, adaptive noise floor, VAD, 500 ms pre-roll, peak gate
+    │
+    ▼
+Engine.kt (JNI) ── whistle.cact transcription (always on-device)
+    │
+    ▼
+Screen.kt (orchestrator)
+    │
+    ├─ Groq API key present? ──► Groq.kt ── qwen/qwen3.8-27b ── tool calls + text response
+    │                                        (falls back to openai/gpt-oss-20b on 429)
+    │
+    └─ No key / offline? ──► Engine.kt (JNI) ── needle3.cact ── tool calls + text response
+    │
+    ▼
+Actions.kt ── executes tool calls on the device
+    │
+    ▼
+Speaker.kt ── Google Speech Services TTS ── spoken output
+```
+
+Transcription always happens on-device through the Whistle model, regardless of whether a Groq key is configured. Only the reasoning step (LLM chat completion) goes to Groq.
+
+## Limitations
+
+- ARM64 only. No x86 or 32-bit ARM support — the native Needle engine is compiled for `arm64-v8a` exclusively.
+- Requires Android 11+ (API 30). The AGSL edge shader requires Android 13+ (API 33); on older versions it falls back to a simpler gradient stroke.
+- The on-device Needle 3 model is small (34 MB). Its responses are basic compared to the Groq-hosted Qwen model. For anything beyond simple commands and short answers, you need the Groq API key configured.
+- No wake word. Theia activates only through Android's assistant gesture or by tapping its launcher icon.
+- English only for voice input and output.
 
 ## License
 
-This project is licensed under the [Apache License 2.0](LICENSE).
+[Apache License 2.0](LICENSE)
