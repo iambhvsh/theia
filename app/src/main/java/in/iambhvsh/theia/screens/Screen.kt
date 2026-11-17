@@ -68,7 +68,7 @@ class Screen : Activity() {
     private lateinit var overlayContainer: LinearLayout
     private lateinit var settingsPage: ScrollView
 
-    // Top Minimise Bar & Response / Greeting Card
+    // Top minimise bar and response card
     private lateinit var topBar: LinearLayout
     private lateinit var responseCard: LinearLayout
     private lateinit var responseTextScroll: ScrollView
@@ -1539,7 +1539,7 @@ class Screen : Activity() {
                             }
                             return@execute
                         } else if (!groqResp.content.isNullOrBlank()) {
-                            // If model responded with plain text instead of calling open_app for an app request
+                            // Direct app match from text response
                             val appMatch = Regex("^(?i)(?:open|launch|start|run)\\s+([a-zA-Z0-9 ]+)").find(prompt.trim().removeSuffix("."))
                             val isStoreOrWebPrompt = prompt.contains("play store", ignoreCase = true) ||
                                                      prompt.contains("store", ignoreCase = true) ||
