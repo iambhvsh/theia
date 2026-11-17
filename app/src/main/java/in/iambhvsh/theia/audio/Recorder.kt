@@ -11,8 +11,8 @@ import kotlin.math.sqrt
 object Recorder {
     private const val TAG = "TheiaRecorder"
     private const val SR = 16000
-    private const val DEFAULT_START_THRESH = 0.0080f // Robust speech onset threshold (rejects room hum & breath)
-    private const val END_CHUNKS = 6                // 100 ms each -> 600 ms silence ends capture (ultra-responsive real-time)
+    private const val DEFAULT_START_THRESH = 0.0080f // Robust speech onset threshold
+    private const val END_CHUNKS = 6                // 100 ms each -> 600 ms silence ends capture
     private const val WAIT_CHUNKS = 70              // 7 s initial wait before giving up
     private const val PRE_ROLL_CHUNKS = 5           // Keep ~500 ms of audio before speech trigger
     private const val TRAILING_PAD_CHUNKS = 2       // Retain ~200 ms padding at end of speech to prevent clipping
