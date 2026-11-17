@@ -1,6 +1,6 @@
 # Theia
 
-A voice assistant for Android that registers as the system default digital assistant. It listens when you swipe from the corner or long-press home, transcribes speech on-device, reasons through a cloud LLM, and speaks the answer back — all through a floating bottom-sheet overlay with no launcher icon clutter.
+A voice assistant for Android that registers as the system default digital assistant. It triggers via corner swipe, power button hold, or app icon, transcribes speech on-device, queries a cloud LLM, and speaks the response aloud through a floating bottom-sheet interface.
 
 ## What it does
 
@@ -22,8 +22,8 @@ Conversations are session-scoped: context is kept in a local SQLite database whi
 - **Cloud reasoning with local fallback** — Groq API for fast inference, Needle 3 on-device when offline
 - **Tool execution** — launches apps, toggles flashlight, controls volume, opens settings panels, sets timers/alarms, searches local files, opens Play Store and URLs, searches Google
 - **Voice output** — responds aloud through Google Speech Services with selectable voices (Emma, Ava, Liam, Oliver, Chloe)
-- **Screen-edge glow** — AGSL GPU shader that traces the physical corner curvature of your display while listening
-- **Hallucination filtering** — silence and common Whisper phantom phrases ("thank you", "please subscribe") are detected and dropped before they reach the LLM
+- **Screen-edge glow** — AGSL GPU shader that briefly lights up the screen perimeter on activation, using the device's actual hardware corner radii; auto-hides after 2 seconds
+- **Silence and phantom phrase filtering** — rejects ambient noise below a dynamic RMS threshold and drops common acoustic model hallucinations (e.g. "thank you", "please subscribe") on short recordings
 - **No heavy dependencies** — the only Gradle dependency is `androidx.core:core-ktx`. Everything else is Android platform APIs and the native Needle engine
 
 ## Getting started
