@@ -99,7 +99,7 @@ class Visualizer @JvmOverloads constructor(
         val cy = h / 2f
         val density = resources.displayMetrics.density
 
-        // Smooth exponential moving average for fluid audio response
+        // Moving average for audio level
         dampedRms = dampedRms * 0.7f + targetRms * 0.3f
 
         val elapsedSec = (SystemClock.uptimeMillis() - startTime) / 1000f

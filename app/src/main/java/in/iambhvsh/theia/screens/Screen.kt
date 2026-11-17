@@ -140,13 +140,13 @@ class Screen : Activity() {
             )
         }
 
-        // 1. Semi-Transparent Scrim
+        // Scrim
         backdropView = View(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(0x77000000) // 45% soft dark dim
+            setBackgroundColor(0x77000000)
             setOnClickListener {
                 Speaker.stop()
                 Recorder.stop()
@@ -177,7 +177,7 @@ class Screen : Activity() {
         }
         rootLayout.addView(shimmerView)
 
-        // 2. Main Overlay Vertical Stack
+        // Overlay container
         overlayContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             val lp = FrameLayout.LayoutParams(
@@ -190,12 +190,12 @@ class Screen : Activity() {
                 enableTransitionType(LayoutTransition.CHANGING)
             }
             setPadding(0, 0, 0, (14 * density).toInt())
-            setOnClickListener {} // Prevent touch pass-through to backdrop
+            setOnClickListener {}
             translationY = 14f * density
             alpha = 0f
         }
 
-        // Handle navigation bar and keyboard insets
+        // Window insets
         rootLayout.setOnApplyWindowInsetsListener { _, insets ->
             val bottomInset = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val ime = insets.getInsets(WindowInsets.Type.ime()).bottom
@@ -209,7 +209,7 @@ class Screen : Activity() {
             insets
         }
 
-        // --- ROW A: Floating Top-Right "↳ Minimise" Button ---
+        // Minimise button container
         topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
@@ -221,7 +221,7 @@ class Screen : Activity() {
                 bottomMargin = (10 * density).toInt()
             }
             layoutParams = lp
-            visibility = View.GONE // Hidden by default
+            visibility = View.GONE
         }
 
         val minimiseBtn = LinearLayout(this).apply {
@@ -229,7 +229,7 @@ class Screen : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(0xFF1E1F20.toInt()) // Dark Charcoal
+                setColor(0xFF1E1F20.toInt())
                 cornerRadius = 18f * density
             }
             setPadding((14 * density).toInt(), (8 * density).toInt(), (14 * density).toInt(), (8 * density).toInt())
@@ -261,19 +261,19 @@ class Screen : Activity() {
         topBar.addView(minimiseBtn)
         overlayContainer.addView(topBar)
 
-        // --- ROW B: Floating Greeting / Response Card ---
+        // Response card
         responseCard = buildResponseCard(density).apply {
-            visibility = View.GONE // Hidden by default
+            visibility = View.GONE
         }
         overlayContainer.addView(responseCard)
 
-        // Bottom input pill container
+        // Input pill container
         inputCardContainer = buildInputCardContainer(density)
         overlayContainer.addView(inputCardContainer)
 
         rootLayout.addView(overlayContainer)
 
-        // 3. Full-Page Settings View
+        // Settings page
         settingsPage = buildSettingsPage(density)
         rootLayout.addView(settingsPage)
 
@@ -393,9 +393,6 @@ class Screen : Activity() {
         return RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), bg, mask)
     }
 
-    /**
-     * Builds the response card with drag handle and action toolbar.
-     */
     private fun buildResponseCard(density: Float): LinearLayout {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -410,14 +407,14 @@ class Screen : Activity() {
             layoutParams = lp
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(0xFF131314.toInt()) // Deep Charcoal Surface
+                setColor(0xFF131314.toInt())
                 cornerRadius = 28f * density
             }
             elevation = 8f * density
             setPadding((18 * density).toInt(), (10 * density).toInt(), (18 * density).toInt(), (12 * density).toInt())
         }
 
-        // Drag handle (32dp x 3.5dp, #444746) - tap to dismiss card
+        // Drag handle
         val handleBar = View(this).apply {
             val hlp = LinearLayout.LayoutParams((32 * density).toInt(), (3.5f * density).toInt()).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -436,7 +433,7 @@ class Screen : Activity() {
         }
         card.addView(handleBar)
 
-        // Main Response Text (Scrollable if long)
+        // Response text
         responseTextScroll = ScrollView(this).apply {
             val slp = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -492,7 +489,7 @@ class Screen : Activity() {
         responseTextScroll.addView(textContainer)
         card.addView(responseTextScroll)
 
-        // Bottom Action Toolbar: [ThumbUp, ThumbDown, Share, Copy, MoreVert] ... [Volume]
+        // Action toolbar
         val toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -589,10 +586,6 @@ class Screen : Activity() {
         return card
     }
 
-    /**
-     * Builds the bottom input pill:
-     * Prompt text + mic icon (or send icon when typing).
-     */
     private fun buildInputCardContainer(density: Float): FrameLayout {
         val container = FrameLayout(this).apply {
             val lp = LinearLayout.LayoutParams(
@@ -611,7 +604,7 @@ class Screen : Activity() {
             elevation = 8f * density
         }
 
-        // --- 1. Collapsed input row ---
+        // Collapsed input row
         collapsedInputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -626,7 +619,6 @@ class Screen : Activity() {
             }
         }
 
-        // Center "Ask Theia" Text / Tap Area & Dynamic Status
         pillStatusText = TextView(this).apply {
             text = "Ask Theia"
             textSize = 17.5f
@@ -642,7 +634,7 @@ class Screen : Activity() {
         }
         collapsedInputRow.addView(pillStatusText)
 
-        // Right Action Container: Morphs between Mic button (idle) and Shimmer Visualizer (active)
+        // Action container: mic (idle) / visualizer (active)
         val micActionContainer = FrameLayout(this).apply {
             val mlp = LinearLayout.LayoutParams((44 * density).toInt(), (44 * density).toInt())
             layoutParams = mlp
@@ -688,7 +680,7 @@ class Screen : Activity() {
         collapsedInputRow.addView(micActionContainer)
         container.addView(collapsedInputRow)
 
-        // --- 2. EXPANDED INPUT CARD ---
+        // Expanded input card
         expandedInputCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             val elp = FrameLayout.LayoutParams(
@@ -700,7 +692,7 @@ class Screen : Activity() {
             visibility = View.GONE
         }
 
-        // Top Row: Text Input Field
+        // Text input field
         promptInput = EditText(this).apply {
             hint = "Ask Theia"
             textSize = 17f
@@ -735,7 +727,7 @@ class Screen : Activity() {
         }
         expandedInputCard.addView(promptInput)
 
-        // Bottom Row: Spacer ... [ Action Container: Mic / Visualizer / Send ]
+        // Action container: mic / visualizer / send
         val expandedBottomRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -896,7 +888,6 @@ class Screen : Activity() {
     private fun setMicActive(active: Boolean) {
         val density = resources.displayMetrics.density
         if (active) {
-            // Circular grey active mic plate with dark icon (Screenshot 2)
             collapsedMicBtn.background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(0xFFA8AAAC.toInt())
@@ -1001,7 +992,7 @@ class Screen : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(0xFF131314.toInt()) // Dark theme settings
+            setBackgroundColor(0xFF131314.toInt())
             visibility = View.GONE
         }
 
@@ -1272,11 +1263,11 @@ class Screen : Activity() {
             "you", "bye", "bye bye", "so", "yeah", "okay", "watching",
             "amara org", "amara", "silence", "music", "applause"
         )
-        // If audio was brief (< 2.5s) and matches any hallucination phantom phrase
+        // Brief silence hallucinations
         if (durationSec < 2.5f && phantomPhrases.contains(norm)) {
             return true
         }
-        // Always catch YouTube outro watermarks regardless of duration if there is no other text
+        // Subtitle and outro watermarks
         if (norm.startsWith("thanks for watching") || norm.startsWith("thank you for watching") ||
             norm.startsWith("please subscribe") || norm.startsWith("subtitles by") ||
             norm.contains("amara org")) {
@@ -1291,7 +1282,7 @@ class Screen : Activity() {
         s = s.replace(Regex("^(?i)here\\s+(?=(find|search|open|set|what|how|who|can)\\b)"), "")
         s = s.replace(Regex("^(?i)(?:then|can you|could you|please|will you|just)\\s+"), "")
         s = s.replace(Regex("^(?i)opening\\s+"), "open ")
-        // Common ASR misrecognitions and speech splits for popular apps
+        // App name normalization
         s = s.replace(Regex("(?i)\\b(?:in\\s+)?stagram\\b"), "instagram")
         s = s.replace(Regex("(?i)\\bwhats\\s+app\\b"), "whatsapp")
         s = s.replace(Regex("(?i)\\byou\\s+tube\\b"), "youtube")
@@ -1374,7 +1365,7 @@ class Screen : Activity() {
                     }
                 )
 
-                // If no audio was heard, silently reset without showing any card
+                // Empty audio
                 if (pcm.isEmpty()) {
                     return@execute
                 }
@@ -1390,7 +1381,7 @@ class Screen : Activity() {
                 val text = org.json.JSONObject(rawTranscribe).optString("text").trim()
                 android.util.Log.d("Theia", "Extracted transcribed text: '$text'")
 
-                // If transcription is empty, silently reset
+                // Empty transcript
                 if (text.isEmpty()) {
                     return@execute
                 }
@@ -1442,7 +1433,7 @@ class Screen : Activity() {
 
         exec.execute {
             try {
-                // Instant fast-path: if user requested opening an installed app, launch immediately
+                // Direct app launch fast-path
                 val directAppMatch = Regex("^(?i)(?:open|launch|start|run)\\s+([a-zA-Z0-9 ]+)").find(prompt)
                 val isStoreOrWeb = prompt.contains("play store", ignoreCase = true) ||
                                    prompt.contains("store", ignoreCase = true) ||
@@ -1461,7 +1452,6 @@ class Screen : Activity() {
                         if (!announced) say(r)
                         return@execute
                     }
-                    // If not installed on device, fall through to Groq / Assistant for intelligent handling
                 }
 
                 val db = Database.get(applicationContext)
@@ -1610,16 +1600,16 @@ class Screen : Activity() {
                             say("Your Groq API key appears to be invalid. Please check it in Settings.")
                             return@execute
                         }
-                        // Fall through to on-device local engine fallback below
+                        // Fallback to local engine
                     }
                 }
 
-                // --- ON-DEVICE LOCAL ENGINE FALLBACK ---
+                // Local fallback
                 val p = prompt.lowercase()
                 val prevAssistantMsg = db.history().getSession(currentSessionId, 4).lastOrNull { it.role == "assistant" }?.content ?: ""
                 val prevTargetApp = Regex("(?i)don't have\\s+([a-zA-Z0-9 ]+?)\\s+installed").find(prevAssistantMsg)?.groupValues?.get(1)?.trim()
 
-                // Check if user is asking about Play Store or downloading
+                // Play Store
                 if (p.contains("play store") || p.contains("playstore") || p.contains("download") || p.contains("install")) {
                     var target = prompt.replace(Regex("(?i)\\b(?:open|launch|start|run|in|on|the|from|to)?\\s*(?:google\\s*)?play\\s*store\\b"), "")
                         .replace(Regex("(?i)\\b(?:download|install|get|it|yes|sure|please)\\b"), "")
@@ -1634,7 +1624,7 @@ class Screen : Activity() {
                     }
                 }
 
-                // Check if user is asking about website or browser
+                // Web URL
                 if (p.contains("website") || p.contains("site") || p.contains("browser") || p.contains("web")) {
                     var target = prompt.replace(Regex("(?i)\\b(?:open|launch|start|run|in|on|the|view)?\\s*(?:website|site|browser|web)\\b"), "")
                         .replace(Regex("(?i)\\b(?:it|yes|sure|please)\\b"), "")
@@ -1650,7 +1640,7 @@ class Screen : Activity() {
                     }
                 }
 
-                // Flashlight / torch
+                // Flashlight
                 if (p.contains("flashlight") || p.contains("torch") || p == "lumos" || p == "nox") {
                     val enable = !p.contains("off") && p != "nox"
                     val r = actions.toggleTorch(enable) { m -> say(m) }
@@ -1671,14 +1661,14 @@ class Screen : Activity() {
                     return@execute
                 }
 
-                // Settings
+                // System settings
                 if (p.contains("setting") || p.contains("settings") || p.contains("bluetooth") || p.contains("wifi") || p.contains("wi-fi")) {
                     val r = actions.openSettings(p) { m -> say(m) }
                     say(r)
                     return@execute
                 }
 
-                // Time, date & battery
+                // Time, date, and battery
                 if (p.contains("what time") || p.contains("time is it") || p == "time") {
                     val timeStr = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(java.util.Date())
                     say("It's $timeStr.")

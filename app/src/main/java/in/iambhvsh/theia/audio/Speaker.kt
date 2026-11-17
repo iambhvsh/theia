@@ -20,7 +20,6 @@ data class VoiceItem(
     val requiresInternet: Boolean = systemVoiceName.endsWith("-network")
 )
 
-// Theia's voice engine
 object Speaker {
     private const val TAG = "TheiaSpeaker"
     private const val PREFS = "groq_prefs"

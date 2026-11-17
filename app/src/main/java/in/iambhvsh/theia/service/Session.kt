@@ -14,12 +14,7 @@ class Sessions : VoiceInteractionSessionService() {
 }
 
 /**
- * Wake gesture and power button handler.
- * - setUiEnabled(false) suppresses the default framework session window,
- *   preventing any blank white box or starting border from flashing on screen.
- * - startAssistantActivity launches Theia's overlay inside Android's dedicated assistant layer.
- * - We do NOT call hide() in onShow(), allowing Theia's assistant activity to run smoothly
- *   without being immediately dismissed by the OS.
+ * Handles system assistant sessions triggered via gesture or hardware button.
  */
 class Session(ctx: Context) : VoiceInteractionSession(ctx) {
 

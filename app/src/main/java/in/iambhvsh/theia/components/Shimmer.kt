@@ -52,46 +52,44 @@ class Shimmer(context: Context) : View(context) {
                 float2 halfRes = iResolution * 0.5;
                 float2 centeredCoord = fragCoord - halfRes;
 
-                // Exact distance inside the curved screen boundary (0.0 at bezel, positive inward)
+                // Distance inside screen boundary
                 float distFromEdge = -sdRoundBox(centeredCoord, halfRes, iCornerRadii);
 
-                // Normalized vertical bias: thicker glow near bottom prompt sheet (0.0 top -> 1.0 bottom)
+                // Thicker glow near bottom
                 float verticalBias = smoothstep(0.0, 1.0, fragCoord.y / iResolution.y);
 
-                // Polar angle around screen center for seamless orbital wrapping
                 float angle = atan(centeredCoord.y, centeredCoord.x);
 
-                // Multi-harmonic liquid light wave distortion
+                // Wave distortion
                 float speed = mix(2.4, 6.5, iThinking);
                 float wave1 = sin(angle * 3.0 + iTime * speed) * 0.5 + 0.5;
                 float wave2 = cos(angle * 5.0 - iTime * (speed * 0.7)) * 0.5 + 0.5;
                 float organicWave = (wave1 * 0.65 + wave2 * 0.35);
 
-                // Dynamic glow thickness in pixels driven by bottom anchor + voice reactivity
+                // Glow thickness based on position and voice reactivity
                 float minDim = min(iResolution.x, iResolution.y);
                 float baseThickness = minDim * mix(0.024, 0.052, verticalBias);
                 float audioBoost = minDim * 0.038 * iAudioLevel * organicWave;
                 float totalThickness = (baseThickness + audioBoost + (minDim * 0.016 * organicWave));
 
-                // Exponential light falloff toward screen center
+                // Falloff toward center
                 float d = max(distFromEdge, 0.0);
                 float retract = max(pow(iIntensity, 1.6), 0.001);
                 float coreGlow = exp(-d / max(totalThickness * 0.35 * retract, 0.8));
                 float softBloom = exp(-d / max(totalThickness * 1.45 * retract, 1.5)) * (iIntensity * iIntensity);
                 float combinedGlow = (coreGlow * 0.88 + softBloom * 0.44) * iIntensity;
 
-                // 4-color orbital sweep around the perimeter
+                // Color sweep around perimeter
                 float phase = fract((angle / 6.2831853) + (iTime * mix(0.18, 0.55, iThinking)));
                 float3 color = mix(COLOR_BLUE, COLOR_VIOLET, smoothstep(0.00, 0.25, phase));
                 color = mix(color, COLOR_CORAL,  smoothstep(0.25, 0.50, phase));
                 color = mix(color, COLOR_CYAN,   smoothstep(0.50, 0.75, phase));
                 color = mix(color, COLOR_BLUE,   smoothstep(0.75, 1.00, phase));
 
-                // Edge core highlight
+                // Edge highlight
                 color = mix(color, float3(1.0, 1.0, 1.0), coreGlow * 0.38 * iIntensity);
 
                 float alpha = clamp(combinedGlow, 0.0, 1.0);
-                // Premultiplied alpha output for clean additive blending
                 return half4(half3(color * alpha), half(alpha));
             }
         """

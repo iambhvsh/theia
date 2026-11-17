@@ -11,11 +11,11 @@ import kotlin.math.sqrt
 object Recorder {
     private const val TAG = "TheiaRecorder"
     private const val SR = 16000
-    private const val DEFAULT_START_THRESH = 0.0080f // Robust speech onset threshold
+    private const val DEFAULT_START_THRESH = 0.0080f // Speech onset threshold
     private const val END_CHUNKS = 6                // 100 ms each -> 600 ms silence ends capture
-    private const val WAIT_CHUNKS = 70              // 7 s initial wait before giving up
-    private const val PRE_ROLL_CHUNKS = 5           // Keep ~500 ms of audio before speech trigger
-    private const val TRAILING_PAD_CHUNKS = 2       // Retain ~200 ms padding at end of speech to prevent clipping
+    private const val WAIT_CHUNKS = 70              // 7 s initial wait before timeout
+    private const val PRE_ROLL_CHUNKS = 5           // Retain ~500 ms audio before speech trigger
+    private const val TRAILING_PAD_CHUNKS = 2       // Retain ~200 ms padding at end of speech
 
     @Volatile
     private var isCancelled = false
@@ -158,23 +158,18 @@ object Recorder {
                         consecutiveSpeech++
                     } else if (isPossibleSpeech) {
                         if (quiet == 0) {
-                            // Direct continuation of active speech
                             speechChunks++
                             consecutiveSpeech++
                         } else {
-                            // Energy during an existing silence pause (breath / transient ambient noise)
                             consecutiveSpeech++
                             if (consecutiveSpeech >= 2) {
-                                // Sustained speech resumed
                                 quiet = 0
                                 speechChunks += consecutiveSpeech
                             } else {
-                                // Isolated non-speech transient; continue counting silence
                                 quiet++
                             }
                         }
                     } else {
-                        // True quiet silence
                         consecutiveSpeech = 0
                         quiet++
                     }
@@ -200,7 +195,7 @@ object Recorder {
         val trimSamples = excessSilenceChunks * chunk
         val finalSize = maxOf(chunk * 2, out.size - trimSamples)
 
-        // Peak normalization: scale audio to nominal speech amplitude (~0.85 peak)
+        // Scale audio to target peak amplitude
         val pcm = FloatArray(finalSize)
         var peak = 0.0f
         for (i in 0 until finalSize) {
@@ -210,7 +205,7 @@ object Recorder {
             if (a > peak) peak = a
         }
 
-        // Reject room silence/noise: real human speech into a phone microphone has peak >= 0.035
+        // Reject captures below minimum speech threshold
         if (peak < 0.035f) {
             Log.d(TAG, "Audio rejected as ambient silence/noise: raw peak=$peak < 0.035")
             return FloatArray(0)
