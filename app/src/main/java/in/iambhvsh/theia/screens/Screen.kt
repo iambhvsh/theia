@@ -68,7 +68,7 @@ class Screen : Activity() {
     private lateinit var overlayContainer: LinearLayout
     private lateinit var settingsPage: ScrollView
 
-    // Top Minimise Bar & Response / Greeting Card (hidden by default)
+    // Top Minimise Bar & Response / Greeting Card
     private lateinit var topBar: LinearLayout
     private lateinit var responseCard: LinearLayout
     private lateinit var responseTextScroll: ScrollView
@@ -76,10 +76,11 @@ class Screen : Activity() {
     private lateinit var statusTextView: TextView
     private lateinit var volumeBtn: ImageButton
 
-    // Floating Context Row (optional)
-    private lateinit var contextRow: LinearLayout
+    // Visualizers
+    private lateinit var collapsedVisualizer: Visualizer
+    private lateinit var expandedVisualizer: Visualizer
 
-    // Floating Input Pill Elements (Clean: Text + Mic / Send only)
+    // Floating Input Pill
     private lateinit var inputCardContainer: FrameLayout
     private lateinit var collapsedInputRow: LinearLayout
     private lateinit var pillStatusText: TextView
@@ -139,7 +140,7 @@ class Screen : Activity() {
             )
         }
 
-        // 1. Semi-Transparent Scrim (tapping outside stops speech and dismisses overlay)
+        // 1. Semi-Transparent Scrim
         backdropView = View(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -176,7 +177,7 @@ class Screen : Activity() {
         }
         rootLayout.addView(shimmerView)
 
-        // 2. Main Overlay Vertical Stack (Aligned to BOTTOM)
+        // 2. Main Overlay Vertical Stack
         overlayContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             val lp = FrameLayout.LayoutParams(
@@ -208,7 +209,7 @@ class Screen : Activity() {
             insets
         }
 
-        // --- ROW A: Floating Top-Right "↳ Minimise" Button (Hidden by default) ---
+        // --- ROW A: Floating Top-Right "↳ Minimise" Button ---
         topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
@@ -228,7 +229,7 @@ class Screen : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(0xFF1E1F20.toInt()) // Google Dark Charcoal
+                setColor(0xFF1E1F20.toInt()) // Dark Charcoal
                 cornerRadius = 18f * density
             }
             setPadding((14 * density).toInt(), (8 * density).toInt(), (14 * density).toInt(), (8 * density).toInt())
@@ -260,17 +261,11 @@ class Screen : Activity() {
         topBar.addView(minimiseBtn)
         overlayContainer.addView(topBar)
 
-        // --- ROW B: Floating Greeting / Response Card (Hidden by default) ---
+        // --- ROW B: Floating Greeting / Response Card ---
         responseCard = buildResponseCard(density).apply {
             visibility = View.GONE // Hidden by default
         }
         overlayContainer.addView(responseCard)
-
-        // --- ROW C: Floating Suggestion / Context Row (Hidden by default) ---
-        contextRow = buildContextRow(density).apply {
-            visibility = View.GONE // Hidden by default
-        }
-        overlayContainer.addView(contextRow)
 
         // Bottom input pill container
         inputCardContainer = buildInputCardContainer(density)
@@ -278,7 +273,7 @@ class Screen : Activity() {
 
         rootLayout.addView(overlayContainer)
 
-        // 3. Full-Page Settings View (Hidden by default)
+        // 3. Full-Page Settings View
         settingsPage = buildSettingsPage(density)
         rootLayout.addView(settingsPage)
 
@@ -290,10 +285,12 @@ class Screen : Activity() {
                 if (speaking) {
                     setPillStatus("Theia is speaking…")
                     volumeBtn.setColorFilter(0xFF3084FF.toInt())
+                    setVisualizerMode(Visualizer.Mode.SPEAKING)
                 } else {
                     volumeBtn.setColorFilter(0xFFC4C7C5.toInt())
                     if (!busy) {
                         setPillStatus(null)
+                        setVisualizerMode(Visualizer.Mode.IDLE)
                     }
                 }
             }
@@ -345,6 +342,7 @@ class Screen : Activity() {
         Speaker.stop()
         Recorder.stop()
         shimmerView.stopShimmer()
+        setVisualizerMode(Visualizer.Mode.IDLE)
         super.onPause()
     }
 
@@ -352,6 +350,7 @@ class Screen : Activity() {
         Speaker.stop()
         Recorder.stop()
         shimmerView.stopShimmer()
+        setVisualizerMode(Visualizer.Mode.IDLE)
         super.onStop()
     }
 
@@ -359,6 +358,7 @@ class Screen : Activity() {
         Speaker.stop()
         Recorder.stop()
         shimmerView.stopShimmer()
+        setVisualizerMode(Visualizer.Mode.IDLE)
         runCatching {
             Database.get(applicationContext).history().clearSession(currentSessionId)
         }
@@ -369,6 +369,7 @@ class Screen : Activity() {
         Speaker.stop()
         Recorder.stop()
         shimmerView.stopShimmer()
+        setVisualizerMode(Visualizer.Mode.IDLE)
         runCatching {
             Database.get(applicationContext).history().clearSession(currentSessionId)
         }
@@ -589,100 +590,6 @@ class Screen : Activity() {
     }
 
     /**
-     * Optional floating context row.
-     */
-    private fun buildContextRow(density: Float): LinearLayout {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            val lp = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                marginStart = (16 * density).toInt()
-                marginEnd = (16 * density).toInt()
-                bottomMargin = (10 * density).toInt()
-            }
-            layoutParams = lp
-        }
-
-        val shareScreenPill = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                setColor(0xFF1E1F20.toInt())
-                cornerRadius = 19f * density
-            }
-            val slp = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                (38 * density).toInt()
-            ).apply {
-                marginEnd = (8 * density).toInt()
-            }
-            layoutParams = slp
-            setPadding((14 * density).toInt(), 0, (14 * density).toInt(), 0)
-            elevation = 4f * density
-
-            val icon = ImageView(this@Screen).apply {
-                setImageResource(resDrawable("ic_screen_share"))
-                setColorFilter(0xFFE3E3E3.toInt())
-                val ilp = LinearLayout.LayoutParams((18 * density).toInt(), (18 * density).toInt()).apply {
-                    marginEnd = (8 * density).toInt()
-                }
-                layoutParams = ilp
-            }
-
-            val text = TextView(this@Screen).apply {
-                this.text = "Share screen with Theia"
-                textSize = 13.5f
-                setTextColor(0xFFE3E3E3.toInt())
-                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            }
-
-            addView(icon)
-            addView(text)
-            setOnClickListener {
-                Toast.makeText(this@Screen, "Sharing screen with Theia…", Toast.LENGTH_SHORT).show()
-                listen()
-            }
-        }
-
-        val photosBtn = ImageButton(this).apply {
-            setImageResource(resDrawable("ic_photos"))
-            setColorFilter(0xFFC4C7C5.toInt())
-            background = createRipple(0xFF282A2C.toInt(), density)
-            val plp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt()).apply {
-                marginEnd = (8 * density).toInt()
-            }
-            layoutParams = plp
-            elevation = 4f * density
-            setOnClickListener {
-                val intent = Intent(Intent.ACTION_VIEW).apply { type = "image/*" }
-                try { startActivity(intent) } catch (_: Exception) { processQuery("search photos") }
-            }
-        }
-
-        val cameraBtn = ImageButton(this).apply {
-            setImageResource(resDrawable("ic_camera"))
-            setColorFilter(0xFFC4C7C5.toInt())
-            background = createRipple(0xFF282A2C.toInt(), density)
-            val clp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt())
-            layoutParams = clp
-            elevation = 4f * density
-            setOnClickListener {
-                val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-                try { startActivity(intent) } catch (_: Exception) { processQuery("open camera") }
-            }
-        }
-
-        row.addView(shareScreenPill)
-        row.addView(photosBtn)
-        row.addView(cameraBtn)
-        return row
-    }
-
-    /**
      * Builds the bottom input pill:
      * Prompt text + mic icon (or send icon when typing).
      */
@@ -755,6 +662,21 @@ class Screen : Activity() {
             }
         }
         collapsedInputRow.addView(collapsedMicBtn)
+
+        collapsedVisualizer = Visualizer(this).apply {
+            val vlp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt()).apply {
+                marginStart = (6 * density).toInt()
+            }
+            layoutParams = vlp
+            setOnClickListener {
+                if (Speaker.isSpeaking) {
+                    Speaker.stop()
+                } else if (!busy) {
+                    listen()
+                }
+            }
+        }
+        collapsedInputRow.addView(collapsedVisualizer)
         container.addView(collapsedInputRow)
 
         // --- 2. EXPANDED INPUT CARD ---
@@ -856,6 +778,21 @@ class Screen : Activity() {
         }
         expandedBottomRow.addView(expandedSendBtn)
 
+        expandedVisualizer = Visualizer(this).apply {
+            val vlp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt()).apply {
+                marginStart = (6 * density).toInt()
+            }
+            layoutParams = vlp
+            setOnClickListener {
+                if (Speaker.isSpeaking) {
+                    Speaker.stop()
+                } else if (!busy) {
+                    listen()
+                }
+            }
+        }
+        expandedBottomRow.addView(expandedVisualizer)
+
         expandedInputCard.addView(expandedBottomRow)
         container.addView(expandedInputCard)
 
@@ -955,6 +892,20 @@ class Screen : Activity() {
             collapsedMicBtn.setColorFilter(0xFFC4C7C5.toInt())
             expandedMicBtn.background = createRipple(Color.TRANSPARENT, density)
             expandedMicBtn.setColorFilter(0xFFC4C7C5.toInt())
+        }
+    }
+
+    private fun setVisualizerMode(mode: Visualizer.Mode) {
+        ui {
+            if (::collapsedVisualizer.isInitialized) collapsedVisualizer.mode = mode
+            if (::expandedVisualizer.isInitialized) expandedVisualizer.mode = mode
+        }
+    }
+
+    private fun setVisualizerRms(rms: Float) {
+        ui {
+            if (::collapsedVisualizer.isInitialized) collapsedVisualizer.setRms(rms)
+            if (::expandedVisualizer.isInitialized) expandedVisualizer.setRms(rms)
         }
     }
 
@@ -1323,9 +1274,9 @@ class Screen : Activity() {
             shimmerView.stopShimmer()
             topBar.visibility = View.VISIBLE
             responseCard.visibility = View.VISIBLE
-            contextRow.visibility = View.GONE
             responseTextView.text = trimmed
             showStatus("")
+            setVisualizerMode(Visualizer.Mode.SPEAKING)
             responseTextScroll.post {
                 responseTextScroll.smoothScrollTo(0, responseTextView.bottom)
             }
@@ -1347,6 +1298,7 @@ class Screen : Activity() {
         ui {
             setMicActive(true)
             setPillStatus("Listening…")
+            setVisualizerMode(Visualizer.Mode.LISTENING)
         }
 
         exec.execute {
@@ -1357,11 +1309,13 @@ class Screen : Activity() {
                     maxSec = 15,
                     onRmsUpdate = { rms ->
                         shimmerView.setAudioLevel(rms)
+                        setVisualizerRms(rms)
                     },
                     onSpeechDetected = {
                         ui {
                             setMicActive(true)
                             setPillStatus("Listening…")
+                            setVisualizerMode(Visualizer.Mode.LISTENING)
                         }
                     }
                 )
@@ -1374,6 +1328,7 @@ class Screen : Activity() {
                 ui {
                     setMicActive(false)
                     setPillStatus("Transcribing…")
+                    setVisualizerMode(Visualizer.Mode.THINKING)
                 }
 
                 val rawTranscribe = Engine.transcribe(pcm)
@@ -1408,6 +1363,7 @@ class Screen : Activity() {
                     setMicActive(false)
                     if (!Speaker.isSpeaking) {
                         setPillStatus(null)
+                        setVisualizerMode(Visualizer.Mode.IDLE)
                     }
                     if (!isThinkingQuery) {
                         shimmerView.setThinking(false)
@@ -1424,10 +1380,10 @@ class Screen : Activity() {
         ui {
             topBar.visibility = View.VISIBLE
             responseCard.visibility = View.VISIBLE
-            contextRow.visibility = View.GONE
             responseTextView.text = prompt
             setPillStatus("Thinking…")
             shimmerView.setThinking(true)
+            setVisualizerMode(Visualizer.Mode.THINKING)
         }
 
         exec.execute {
@@ -1783,6 +1739,7 @@ class Screen : Activity() {
                         setMicActive(false)
                         if (!Speaker.isSpeaking) {
                             setPillStatus(null)
+                            setVisualizerMode(Visualizer.Mode.IDLE)
                         }
                     }
                 }
