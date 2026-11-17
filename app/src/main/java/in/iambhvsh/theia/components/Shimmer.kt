@@ -174,18 +174,11 @@ class Shimmer(context: Context) : View(context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && rs != null) {
             // Extract exact hardware corner radii from WindowInsets (API 31+)
             val insets = rootWindowInsets
-            val tr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                insets?.getRoundedCorner(RoundedCorner.POSITION_TOP_RIGHT)?.radius?.toFloat() ?: (42f * density)
-            } else 42f * density
-            val br = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                insets?.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_RIGHT)?.radius?.toFloat() ?: (42f * density)
-            } else 42f * density
-            val tl = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                insets?.getRoundedCorner(RoundedCorner.POSITION_TOP_LEFT)?.radius?.toFloat() ?: (42f * density)
-            } else 42f * density
-            val bl = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                insets?.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_LEFT)?.radius?.toFloat() ?: (42f * density)
-            } else 42f * density
+            val defaultRadius = 42f * density
+            val tr = insets?.getRoundedCorner(RoundedCorner.POSITION_TOP_RIGHT)?.radius?.toFloat() ?: defaultRadius
+            val br = insets?.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_RIGHT)?.radius?.toFloat() ?: defaultRadius
+            val tl = insets?.getRoundedCorner(RoundedCorner.POSITION_TOP_LEFT)?.radius?.toFloat() ?: defaultRadius
+            val bl = insets?.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_LEFT)?.radius?.toFloat() ?: defaultRadius
 
             rs.setFloatUniform("iResolution", width.toFloat(), height.toFloat())
             rs.setFloatUniform("iCornerRadii", tr, br, tl, bl)
