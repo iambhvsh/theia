@@ -17,7 +17,7 @@ import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 
 /**
- * Screen perimeter glow rendered via AGSL RuntimeShader (Android 13+).
+ * Screen perimeter activation glow rendered via AGSL RuntimeShader (Android 13+).
  * Computes boundary distance using a rounded-box signed distance field.
  */
 class Shimmer(context: Context) : View(context) {
@@ -31,8 +31,6 @@ class Shimmer(context: Context) : View(context) {
             uniform float4 iCornerRadii; // topRight, bottomRight, topLeft, bottomLeft (in px)
             uniform float iTime;
             uniform float iIntensity;     // 0.0 (hidden) -> 1.0 (visible)
-            uniform float iAudioLevel;    // 0.0 (silence) -> 1.0 (loud speech)
-            uniform float iThinking;      // 0.0 (listening) -> 1.0 (processing state)
 
             // Gradient palette
             const float3 COLOR_BLUE   = float3(0.259, 0.522, 0.957);
@@ -61,16 +59,14 @@ class Shimmer(context: Context) : View(context) {
                 float angle = atan(centeredCoord.y, centeredCoord.x);
 
                 // Wave distortion
-                float speed = mix(2.4, 6.5, iThinking);
-                float wave1 = sin(angle * 3.0 + iTime * speed) * 0.5 + 0.5;
-                float wave2 = cos(angle * 5.0 - iTime * (speed * 0.7)) * 0.5 + 0.5;
+                float wave1 = sin(angle * 3.0 + iTime * 2.4) * 0.5 + 0.5;
+                float wave2 = cos(angle * 5.0 - iTime * 1.7) * 0.5 + 0.5;
                 float organicWave = (wave1 * 0.65 + wave2 * 0.35);
 
-                // Glow thickness based on position and voice reactivity
+                // Dynamic glow thickness
                 float minDim = min(iResolution.x, iResolution.y);
                 float baseThickness = minDim * mix(0.024, 0.052, verticalBias);
-                float audioBoost = minDim * 0.038 * iAudioLevel * organicWave;
-                float totalThickness = (baseThickness + audioBoost + (minDim * 0.016 * organicWave));
+                float totalThickness = (baseThickness + (minDim * 0.016 * organicWave));
 
                 // Falloff toward center
                 float d = max(distFromEdge, 0.0);
@@ -80,7 +76,7 @@ class Shimmer(context: Context) : View(context) {
                 float combinedGlow = (coreGlow * 0.88 + softBloom * 0.44) * iIntensity;
 
                 // Color sweep around perimeter
-                float phase = fract((angle / 6.2831853) + (iTime * mix(0.18, 0.55, iThinking)));
+                float phase = fract((angle / 6.2831853) + (iTime * 0.18));
                 float3 color = mix(COLOR_BLUE, COLOR_VIOLET, smoothstep(0.00, 0.25, phase));
                 color = mix(color, COLOR_CORAL,  smoothstep(0.25, 0.50, phase));
                 color = mix(color, COLOR_CYAN,   smoothstep(0.50, 0.75, phase));
@@ -109,10 +105,6 @@ class Shimmer(context: Context) : View(context) {
 
     // Dynamic State
     var intensity: Float = 0f
-        private set
-    var audioLevel: Float = 0f
-        private set
-    var isThinking: Boolean = false
         private set
 
     private var timeSeconds: Float = 0f
@@ -182,8 +174,6 @@ class Shimmer(context: Context) : View(context) {
             rs.setFloatUniform("iCornerRadii", tr, br, tl, bl)
             rs.setFloatUniform("iTime", timeSeconds)
             rs.setFloatUniform("iIntensity", intensity)
-            rs.setFloatUniform("iAudioLevel", audioLevel.coerceIn(0f, 1f))
-            rs.setFloatUniform("iThinking", if (isThinking) 1f else 0f)
 
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), shaderPaint)
         } else {
@@ -212,8 +202,6 @@ class Shimmer(context: Context) : View(context) {
         settleFired = false
         visibility = VISIBLE
         timeSeconds = 0f
-        audioLevel = 0f
-        isThinking = false
 
         // Hide after 2 seconds
         postDelayed(autoStopRunnable, 2000L)
@@ -244,20 +232,6 @@ class Shimmer(context: Context) : View(context) {
             }
         }
         intensityAnimator?.start()
-    }
-
-    fun setAudioLevel(normalizedLevel: Float) {
-        if (visibility != VISIBLE || intensity <= 0.01f) return
-        val target = normalizedLevel.coerceIn(0f, 1f)
-        audioLevel = (audioLevel * 0.6f) + (target * 0.4f)
-        invalidate()
-    }
-
-    fun setThinking(thinking: Boolean) {
-        isThinking = thinking
-        if (visibility == VISIBLE && intensity > 0.01f) {
-            invalidate()
-        }
     }
 
     fun stopShimmer() {

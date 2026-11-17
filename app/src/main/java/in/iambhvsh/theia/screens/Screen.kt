@@ -1315,7 +1315,6 @@ class Screen : Activity() {
         shouldListenAfter = autoListen ?: (trimmed.endsWith("?") || trimmed.endsWith("?\""))
         ui {
             isThinkingQuery = false
-            shimmerView.setThinking(false)
             shimmerView.stopShimmer()
             topBar.visibility = View.VISIBLE
             responseCard.visibility = View.VISIBLE
@@ -1353,7 +1352,6 @@ class Screen : Activity() {
                 val pcm = Recorder.capture(
                     maxSec = 15,
                     onRmsUpdate = { rms ->
-                        shimmerView.setAudioLevel(rms)
                         setVisualizerRms(rms)
                     },
                     onSpeechDetected = {
@@ -1411,7 +1409,6 @@ class Screen : Activity() {
                         setVisualizerMode(Visualizer.Mode.IDLE)
                     }
                     if (!isThinkingQuery) {
-                        shimmerView.setThinking(false)
                         shimmerView.stopShimmer()
                     }
                 }
@@ -1427,7 +1424,6 @@ class Screen : Activity() {
             responseCard.visibility = View.VISIBLE
             responseTextView.text = prompt
             setPillStatus("Thinking…")
-            shimmerView.setThinking(true)
             setVisualizerMode(Visualizer.Mode.THINKING)
         }
 
@@ -1774,7 +1770,6 @@ class Screen : Activity() {
                 busy = false
                 isThinkingQuery = false
                 ui {
-                    shimmerView.setThinking(false)
                     shimmerView.stopShimmer()
                     if (shouldListenAfter && !isFinishing && !isDestroyed) {
                         shouldListenAfter = false

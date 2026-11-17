@@ -86,7 +86,7 @@ app/src/main/
 │   │   ├── Recorder.kt        # 16 kHz PCM capture, adaptive VAD, pre-roll buffer, peak normalization
 │   │   └── Speaker.kt         # Google Speech Services TTS wrapper, voice presets, offline fallback
 │   ├── components/
-│   │   ├── Shimmer.kt         # AGSL RuntimeShader — rounded-box SDF edge glow, voice-reactive
+│   │   ├── Shimmer.kt         # AGSL RuntimeShader — rounded-box SDF activation edge glow
 │   │   └── Visualizer.kt      # 3-bar waveform (listening/speaking) and rotating sparkle (thinking)
 │   ├── data/
 │   │   └── Database.kt        # SQLite session-scoped message store
