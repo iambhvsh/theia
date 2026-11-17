@@ -642,13 +642,20 @@ class Screen : Activity() {
         }
         collapsedInputRow.addView(pillStatusText)
 
-        // Right Mic Button (Alone, no icon beside it)
+        // Right Action Container: Morphs between Mic button (idle) and Shimmer Visualizer (active)
+        val micActionContainer = FrameLayout(this).apply {
+            val mlp = LinearLayout.LayoutParams((44 * density).toInt(), (44 * density).toInt())
+            layoutParams = mlp
+        }
+
         collapsedMicBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_mic)
             setColorFilter(0xFFC4C7C5.toInt())
             background = createRipple(Color.TRANSPARENT, density)
-            val mlp = LinearLayout.LayoutParams((44 * density).toInt(), (44 * density).toInt())
-            layoutParams = mlp
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
             setOnClickListener {
                 if (Speaker.isSpeaking) {
                     Speaker.stop()
@@ -661,13 +668,14 @@ class Screen : Activity() {
                 true
             }
         }
-        collapsedInputRow.addView(collapsedMicBtn)
+        micActionContainer.addView(collapsedMicBtn)
 
         collapsedVisualizer = Visualizer(this).apply {
-            val vlp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt()).apply {
-                marginStart = (6 * density).toInt()
-            }
-            layoutParams = vlp
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            visibility = View.GONE
             setOnClickListener {
                 if (Speaker.isSpeaking) {
                     Speaker.stop()
@@ -676,7 +684,8 @@ class Screen : Activity() {
                 }
             }
         }
-        collapsedInputRow.addView(collapsedVisualizer)
+        micActionContainer.addView(collapsedVisualizer)
+        collapsedInputRow.addView(micActionContainer)
         container.addView(collapsedInputRow)
 
         // --- 2. EXPANDED INPUT CARD ---
@@ -719,16 +728,14 @@ class Screen : Activity() {
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                    val hasText = !s.isNullOrBlank()
-                    expandedSendBtn.visibility = if (hasText) View.VISIBLE else View.GONE
-                    expandedMicBtn.visibility = if (hasText) View.GONE else View.VISIBLE
+                    updateExpandedActionButtons()
                 }
                 override fun afterTextChanged(s: Editable?) {}
             })
         }
         expandedInputCard.addView(promptInput)
 
-        // Bottom Row: Spacer ... [ Mic ] or [ Send ] (No plus, no icon beside mic)
+        // Bottom Row: Spacer ... [ Action Container: Mic / Visualizer / Send ]
         val expandedBottomRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -744,12 +751,19 @@ class Screen : Activity() {
         }
         expandedBottomRow.addView(bottomSpacer)
 
+        val expandedActionContainer = FrameLayout(this).apply {
+            val elp = LinearLayout.LayoutParams((40 * density).toInt(), (40 * density).toInt())
+            layoutParams = elp
+        }
+
         expandedMicBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_mic)
             setColorFilter(0xFFC4C7C5.toInt())
             background = createRipple(Color.TRANSPARENT, density)
-            val mlp = LinearLayout.LayoutParams((40 * density).toInt(), (40 * density).toInt())
-            layoutParams = mlp
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
             setOnClickListener {
                 if (Speaker.isSpeaking) {
                     Speaker.stop()
@@ -762,7 +776,7 @@ class Screen : Activity() {
                 true
             }
         }
-        expandedBottomRow.addView(expandedMicBtn)
+        expandedActionContainer.addView(expandedMicBtn)
 
         expandedSendBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_send)
@@ -772,17 +786,20 @@ class Screen : Activity() {
                 shape = GradientDrawable.OVAL
                 setColor(0xFF3084FF.toInt())
             }
-            val slp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt())
-            layoutParams = slp
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
             setOnClickListener { submitPrompt() }
         }
-        expandedBottomRow.addView(expandedSendBtn)
+        expandedActionContainer.addView(expandedSendBtn)
 
         expandedVisualizer = Visualizer(this).apply {
-            val vlp = LinearLayout.LayoutParams((38 * density).toInt(), (38 * density).toInt()).apply {
-                marginStart = (6 * density).toInt()
-            }
-            layoutParams = vlp
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
             setOnClickListener {
                 if (Speaker.isSpeaking) {
                     Speaker.stop()
@@ -791,7 +808,9 @@ class Screen : Activity() {
                 }
             }
         }
-        expandedBottomRow.addView(expandedVisualizer)
+        expandedActionContainer.addView(expandedVisualizer)
+
+        expandedBottomRow.addView(expandedActionContainer)
 
         expandedInputCard.addView(expandedBottomRow)
         container.addView(expandedInputCard)
@@ -804,6 +823,7 @@ class Screen : Activity() {
         isExpanded = true
         Recorder.stop()
         shimmerView.stopShimmer()
+        updateExpandedActionButtons()
         collapsedInputRow.visibility = View.GONE
         expandedInputCard.visibility = View.VISIBLE
         inputCardContainer.background = GradientDrawable().apply {
@@ -895,10 +915,44 @@ class Screen : Activity() {
         }
     }
 
+    private var currentVisualizerMode: Visualizer.Mode = Visualizer.Mode.IDLE
+
+    private fun updateExpandedActionButtons() {
+        if (!::expandedSendBtn.isInitialized || !::expandedMicBtn.isInitialized || !::expandedVisualizer.isInitialized) return
+        val hasText = !promptInput.text.isNullOrBlank()
+        if (hasText) {
+            expandedSendBtn.visibility = View.VISIBLE
+            expandedMicBtn.visibility = View.GONE
+            expandedVisualizer.visibility = View.GONE
+        } else {
+            expandedSendBtn.visibility = View.GONE
+            if (currentVisualizerMode == Visualizer.Mode.IDLE) {
+                expandedMicBtn.visibility = View.VISIBLE
+                expandedVisualizer.visibility = View.GONE
+            } else {
+                expandedMicBtn.visibility = View.GONE
+                expandedVisualizer.visibility = View.VISIBLE
+            }
+        }
+    }
+
     private fun setVisualizerMode(mode: Visualizer.Mode) {
         ui {
-            if (::collapsedVisualizer.isInitialized) collapsedVisualizer.mode = mode
-            if (::expandedVisualizer.isInitialized) expandedVisualizer.mode = mode
+            currentVisualizerMode = mode
+            if (::collapsedVisualizer.isInitialized) {
+                collapsedVisualizer.mode = mode
+                if (mode == Visualizer.Mode.IDLE) {
+                    collapsedVisualizer.visibility = View.GONE
+                    collapsedMicBtn.visibility = View.VISIBLE
+                } else {
+                    collapsedVisualizer.visibility = View.VISIBLE
+                    collapsedMicBtn.visibility = View.GONE
+                }
+            }
+            if (::expandedVisualizer.isInitialized) {
+                expandedVisualizer.mode = mode
+                updateExpandedActionButtons()
+            }
         }
     }
 

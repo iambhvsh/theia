@@ -32,14 +32,19 @@ class Visualizer @JvmOverloads constructor(
 
     private val wavePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val sparklePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val sparklePath = Path()
 
+    // Shimmer gradient palette: Blue -> Violet -> Coral -> Cyan
     private val gradientColors = intArrayOf(
-        0xFF3084FF.toInt(),
-        0xFF078EFB.toInt(),
-        0xFF7C4DFF.toInt(),
-        0xFFCD9AEC.toInt()
+        0xFF4285F4.toInt(), // Blue
+        0xFF9B72CB.toInt(), // Violet
+        0xFFD96570.toInt(), // Coral
+        0xFF24C1E0.toInt()  // Cyan
     )
-    private val gradientPositions = floatArrayOf(0.0f, 0.3f, 0.7f, 1.0f)
+    private val gradientPositions = floatArrayOf(0.0f, 0.33f, 0.66f, 1.0f)
+
+    private var waveShader: LinearGradient? = null
+    private var sparkleShader: LinearGradient? = null
 
     @Volatile
     var mode: Mode = Mode.IDLE
@@ -58,6 +63,29 @@ class Visualizer @JvmOverloads constructor(
     fun setRms(rms: Float) {
         targetRms = rms.coerceIn(0f, 1f)
         postInvalidateOnAnimation()
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w <= 0 || h <= 0) return
+        val density = resources.displayMetrics.density
+        val cx = w / 2f
+        val cy = h / 2f
+        waveShader = LinearGradient(
+            cx - 15f * density, cy - 16f * density,
+            cx + 15f * density, cy + 16f * density,
+            gradientColors,
+            gradientPositions,
+            Shader.TileMode.CLAMP
+        )
+        val maxRadius = 16f * density
+        sparkleShader = LinearGradient(
+            cx - maxRadius, cy - maxRadius,
+            cx + maxRadius, cy + maxRadius,
+            gradientColors,
+            gradientPositions,
+            Shader.TileMode.CLAMP
+        )
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -85,8 +113,9 @@ class Visualizer @JvmOverloads constructor(
             }
         }
 
-        // Keep animating smoothly at screen refresh rate
-        postInvalidateOnAnimation()
+        if (visibility == VISIBLE) {
+            postInvalidateOnAnimation()
+        }
     }
 
     private fun drawWaveform(
@@ -105,18 +134,8 @@ class Visualizer @JvmOverloads constructor(
             11f * density
         )
 
-        if (mode == Mode.IDLE) {
-            wavePaint.shader = null
-            wavePaint.color = 0xFFC4C7C5.toInt()
-        } else {
-            wavePaint.shader = LinearGradient(
-                cx - 15f * density, cy - 16f * density,
-                cx + 15f * density, cy + 16f * density,
-                gradientColors,
-                gradientPositions,
-                Shader.TileMode.CLAMP
-            )
-        }
+        wavePaint.shader = waveShader
+        wavePaint.alpha = if (mode == Mode.IDLE) 180 else 255
 
         val totalWidth = (barCount - 1) * spacing
         val startX = cx - (totalWidth / 2f)
@@ -128,19 +147,16 @@ class Visualizer @JvmOverloads constructor(
             val currentHeight: Float
             when (mode) {
                 Mode.IDLE -> {
-                    // Gentle breathing motion
                     val breathe = 1.0f + 0.08f * sin(elapsedSec * 2.0f + i * 0.8f)
                     currentHeight = baseH * breathe
                 }
                 Mode.LISTENING -> {
-                    // Dynamic live audio response: energetic undulation driven by RMS
                     val wave = abs(sin(elapsedSec * 6.5f + i * 1.2f))
                     val audioBoost = dampedRms * 28f * density
                     currentHeight = (baseH * 0.7f + audioBoost * (0.6f + 0.4f * wave))
                         .coerceAtLeast(barWidth)
                 }
                 Mode.SPEAKING -> {
-                    // Speech cadence rhythm
                     val wave = abs(sin(elapsedSec * 7.5f + i * 1.0f))
                     currentHeight = (baseH * (0.8f + 0.6f * wave))
                         .coerceAtLeast(barWidth)
@@ -174,25 +190,19 @@ class Visualizer @JvmOverloads constructor(
         val outerRadius = 13f * density * pulse
         val innerRadius = 3.5f * density * pulse
 
-        sparklePaint.shader = LinearGradient(
-            cx - outerRadius, cy - outerRadius,
-            cx + outerRadius, cy + outerRadius,
-            gradientColors,
-            gradientPositions,
-            Shader.TileMode.CLAMP
-        )
+        sparklePaint.shader = sparkleShader
 
-        val path = Path()
+        sparklePath.reset()
         for (i in 0 until 8) {
             val angle = i * Math.PI.toFloat() / 4f
             val r = if (i % 2 == 0) outerRadius else innerRadius
             val x = cx + cos(angle) * r
             val y = cy + sin(angle) * r
-            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            if (i == 0) sparklePath.moveTo(x, y) else sparklePath.lineTo(x, y)
         }
-        path.close()
+        sparklePath.close()
 
-        canvas.drawPath(path, sparklePaint)
+        canvas.drawPath(sparklePath, sparklePaint)
         canvas.restore()
     }
 }
